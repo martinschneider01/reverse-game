@@ -8,6 +8,7 @@ export type AudioPlayerProps = {
   audioContext: AudioContext;
   initialDirection?: Direction;
   lockDirection?: Direction;
+  showRateControl?: boolean;
   playerFactory?: (ctx: AudioContext) => Player;
   onPlay?: () => void;
 };
@@ -25,6 +26,7 @@ export function AudioPlayer({
   audioContext,
   initialDirection = "forward",
   lockDirection,
+  showRateControl = true,
   playerFactory = createPlayer,
   onPlay,
 }: AudioPlayerProps) {
@@ -100,18 +102,20 @@ export function AudioPlayer({
           Sens : {direction === "forward" ? "à l'endroit" : "à l'envers"}
         </button>
       )}
-      <label>
-        Vitesse : {rate.toFixed(2)}×
-        <input
-          type="range"
-          min={MIN_RATE}
-          max={MAX_RATE}
-          step={0.01}
-          value={rate}
-          onChange={handleRateChange}
-          aria-label="Vitesse"
-        />
-      </label>
+      {showRateControl && (
+        <label>
+          Vitesse : {rate.toFixed(2)}×
+          <input
+            type="range"
+            min={MIN_RATE}
+            max={MAX_RATE}
+            step={0.01}
+            value={rate}
+            onChange={handleRateChange}
+            aria-label="Vitesse"
+          />
+        </label>
+      )}
     </div>
   );
 }

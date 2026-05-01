@@ -73,6 +73,7 @@ export function GuessingPhase({
           <AudioPlayer
             recording={guessRecording}
             audioContext={ctx}
+            showRateControl={false}
             playerFactory={playerFactory}
           />
         )}

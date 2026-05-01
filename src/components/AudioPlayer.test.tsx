@@ -193,6 +193,32 @@ describe("<AudioPlayer />", () => {
     expect(screen.queryByRole("button", { name: /sens/i })).not.toBeInTheDocument();
   });
 
+  it("hides the speed slider when showRateControl is false", () => {
+    const { player } = makeFakePlayer();
+
+    render(
+      <AudioPlayer
+        recording={fakeRecording}
+        audioContext={fakeCtx}
+        playerFactory={() => player}
+        showRateControl={false}
+      />,
+    );
+
+    expect(screen.queryByRole("slider", { name: /vitesse/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/vitesse/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the speed slider by default", () => {
+    const { player } = makeFakePlayer();
+
+    render(
+      <AudioPlayer recording={fakeRecording} audioContext={fakeCtx} playerFactory={() => player} />,
+    );
+
+    expect(screen.getByRole("slider", { name: /vitesse/i })).toBeInTheDocument();
+  });
+
   it("lockDirection takes precedence over initialDirection", () => {
     const { player, setDirection } = makeFakePlayer();
 

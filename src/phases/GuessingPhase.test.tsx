@@ -116,4 +116,20 @@ describe("<GuessingPhase />", () => {
     await screen.findAllByRole("button", { name: /lecture/i });
     expect(screen.getAllByRole("button", { name: /lecture/i }).length).toBeGreaterThanOrEqual(2);
   });
+
+  it("the 'Ta voix' replay player does not expose the speed slider while the original does", async () => {
+    useGameStore.setState({
+      ...INITIAL_STATE,
+      phase: "guessing",
+      originalRecording: fakeOriginal,
+      guessRecording: fakeGuess,
+    });
+
+    render(
+      <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+
+    const sliders = screen.getAllByRole("slider", { name: /vitesse/i });
+    expect(sliders).toHaveLength(1);
+  });
 });

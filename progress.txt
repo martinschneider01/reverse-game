@@ -912,3 +912,76 @@ design tokens) → #10 (Menu redesign) → #11 (rest-of-phases polish).
 After #14 the gameplay-mechanics backlog for Mode 1 MVP is empty; the
 remaining open work is purely cosmetic + the HITL device test on #1.
 
+
+2026-05-01 — Issue #14 (Mode compact du AudioPlayer pour "Ta voix")
+
+One-prop fix landing the last gameplay-mechanics polish item before the
+visual-polish track. AudioPlayer now accepts `showRateControl?: boolean`
+(default `true`); when `false`, the speed slider + "Vitesse" label are
+absent from the DOM and the player runs at the default 1× rate.
+GuessingPhase passes `showRateControl={false}` on the `guessRecording`
+replay player ("Ta voix") since B doesn't need a phoneme-stretching
+slider to verify their own take. The original player (locked reverse
+since #13) keeps the slider — phoneme-by-phoneme decoding of the
+puzzle is exactly the use case the slider exists for.
+
+All gates green: 124 tests across 19 files (was 121), typecheck clean,
+oxlint clean, oxfmt --check clean.
+
+Modules touched:
+  - src/components/AudioPlayer.tsx — new optional prop
+    `showRateControl?: boolean` (default `true`) on AudioPlayerProps.
+    Wraps the existing `<label>Vitesse...<input type="range">` block in
+    `{showRateControl && (...)}`. Internal `rate` state and
+    `handleRateChange` are kept untouched — they're cheap, harmless when
+    the slider isn't rendered, and avoid a conditional hook layout.
+  - src/components/AudioPlayer.test.tsx — 2 new tests (now 14 total):
+    (a) `showRateControl={false}` → slider + "Vitesse" text absent from
+    DOM; (b) default behaviour shows the slider (regression guard for
+    the existing call sites in RecordingAPhase preview, RevealPhase, and
+    the original-player branch of GuessingPhase).
+  - src/phases/GuessingPhase.tsx — `showRateControl={false}` on the
+    "Ta voix" AudioPlayer (the one rendering `guessRecording`). The
+    original player is unchanged — it still gets the slider for
+    phoneme-level decoding, plus its `lockDirection="reverse"` from #13.
+  - src/phases/GuessingPhase.test.tsx — 1 new test asserting that, when
+    both recordings are present, exactly one slider is in the DOM (the
+    original's). Covers the AC's "le player de Ta voix n'expose pas le
+    slider vitesse" without relying on order assertions.
+
+Design notes worth flagging for the next agent:
+
+  - **`showRateControl` default is `true`**. Reason: every existing call
+    site (RecordingAPhase preview, RevealPhase × 2, GuessingPhase
+    original) wants the slider. Defaulting to true means none of them
+    needed touching, only the one site that opts out.
+  - **Internal `rate` state is preserved when the slider is hidden**.
+    The component still owns `rate=1` and a `handleRateChange` closure;
+    they're just unreachable when `showRateControl=false`. If a future
+    caller wants to seed a non-1× rate via prop without rendering the
+    slider (e.g. preset slow-mo), add an `initialRate?: number` prop —
+    don't tie it to `showRateControl`. Two orthogonal concerns.
+  - **No reactive update on prop change**. Same caveat as
+    `initialDirection` / `lockDirection`: AudioPlayer is mounted-once
+    per (phase, recording) pair in real flow. If a future use case
+    needs to toggle `showRateControl` mid-life, fine — the change is
+    just a re-render with the conditional flipping, no setRate call
+    needed since `rate` never moved off 1.
+  - **The preview AudioPlayer in RecordingAPhase still shows the
+    slider** (per the T+#12 progress note's intentional decision —
+    direction toggle is the genuinely useful preview control, slider is
+    low-cost noise). If a future redesign removes the slider from
+    preview too, the prop is now ready.
+  - **No new dependencies, no new state primitives**.
+  - **Coverage tool still not wired**. AudioPlayer's branches now
+    include the conditional render; both branches are covered by the
+    two new tests.
+
+Next up: the gameplay-mechanics backlog for Mode 1 MVP is now empty. The
+remaining open work is the visual polish track via #9 (Tailwind setup —
+**HITL** on design tokens choice: palette, typo, vibe), which then
+unlocks #10 (Menu redesign — also HITL on the hero composition) and #11
+(rest-of-phases polish, no HITL once #9 is set). Plus the standing HITL
+device test on #1. Nothing in the open backlog is fully agent-completable
+without human design input or device testing.
+
