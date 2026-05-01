@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RevealPhase } from "./RevealPhase";
 import { useGameStore, INITIAL_STATE } from "@/store/gameStore";
+import { usePlaybackStore, INITIAL_PLAYBACK_STATE } from "@/store/playbackStore";
 import type { Recording } from "@/audio/recording";
 import type { Player } from "@/audio/wrappers/player";
 
@@ -40,6 +41,7 @@ beforeEach(() => {
     notes: "ma note",
     listenCount: 3,
   });
+  usePlaybackStore.setState({ ...INITIAL_PLAYBACK_STATE });
 });
 
 describe("<RevealPhase />", () => {

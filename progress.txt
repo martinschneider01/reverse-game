@@ -675,3 +675,93 @@ setup) blocks #10 and #11 (visual polish). Pick by priority: #15 is
 arguably the next "game broken without it" item since overlapping audio
 is unusable.
 
+
+2026-05-01 — Issue #15 (Coordination "un seul player actif" : auto-pause des autres lectures)
+
+Closed the gameplay-critical bug where two `AudioPlayer` instances could play
+overlapping audio simultaneously (e.g. RevealPhase's original + voix B, or
+GuessingPhase's original + replay-of-Ta-voix). Now starting playback on any
+player auto-pauses every other currently-playing player. All gates green:
+118 tests across 19 files (was 110 across 18), typecheck clean, oxlint clean,
+oxfmt --check clean, vite build OK (15 precache entries / 207.37 KiB).
+
+Modules delivered:
+  - src/store/playbackStore.ts (+ .test.ts) — new minimal Zustand store with
+    `currentPlayingId: string | null` and two actions: `setPlaying(id)` (sets
+    the id unconditionally) and `clearPlaying(id)` (clears only if id matches
+    current — protects against late `clearPlaying` calls from a player that
+    was already preempted by another). 5 unit tests covering each action +
+    initial state. INITIAL_PLAYBACK_STATE exported for test reset, mirroring
+    the `INITIAL_STATE` convention from gameStore.
+  - src/components/AudioPlayer.tsx — wired to playbackStore:
+      • Each instance generates a stable `playerId` via `useId()`.
+      • `handleToggle` calls `setPlaying(playerId)` on play and
+        `clearPlaying(playerId)` on user-initiated pause.
+      • `onEnded` callback also calls `clearPlaying(playerId)` so a natural
+        end-of-buffer leaves the store clean.
+      • A `useEffect` watching `currentPlayingId` pauses this player and
+        flips local `isPlaying` to false if another id becomes active while
+        we're playing. The own-id case is filtered out so `setPlaying`
+        doesn't immediately self-cancel.
+  - src/components/AudioPlayer.test.tsx — 3 new tests (now 12 total):
+      • two players rendered, click play on B while A plays → A.pause is
+        called once, A's button reverts to "Lecture" while B's reads "Pause"
+      • user-pause on A doesn't trigger pause on B (negative regression
+        guard)
+      • natural end-of-buffer clears the store entry
+    Existing tests untouched in behavior; added a `beforeEach` reset of
+    playbackStore so cross-test state can't leak.
+  - src/phases/GuessingPhase.test.tsx, src/phases/RevealPhase.test.tsx —
+    added `usePlaybackStore.setState(INITIAL_PLAYBACK_STATE)` in their
+    existing `beforeEach`. Defensive: these phases mount AudioPlayers, so
+    their tests transitively interact with the store.
+
+Design notes worth flagging for the next agent:
+
+  - **Why a Zustand store and not a React context**: the AC mentioned both as
+    valid options. Picked Zustand because (a) the codebase already uses it
+    for gameStore — same mental model, no new primitive, (b) testing pattern
+    is identical (`setState` in `beforeEach`), (c) we can reset between
+    tests via INITIAL_PLAYBACK_STATE without an explicit Provider wrapper
+    in tests, (d) AudioPlayer can `useId()` for a per-instance id without
+    needing the parent to thread one through.
+  - **`useId` for the player id**: each `<AudioPlayer />` calls `useId()`
+    once and uses it as its identity in the playback store. Stable across
+    re-renders, unique per instance. No need for callers to pass an `id`
+    prop — keeps the API surface unchanged.
+  - **Order of effects matters here**. When the user clicks play:
+    `handleToggle` sets local `isPlaying=true`, calls `setPlaying(myId)`,
+    then `onPlay?.()`. The `useEffect` watching currentPlayingId then
+    re-runs in every other AudioPlayer instance: if they're playing AND
+    the new id isn't theirs, they pause themselves. The own-instance also
+    re-runs but hits the `currentPlayingId !== playerId` guard and no-ops.
+    This is intentional and load-bearing — don't reorder.
+  - **`clearPlaying` is conditional on id match**. Reason: imagine A plays,
+    then B plays (which auto-preempts A and sets currentPlayingId=B). Some
+    millis later, A's `useEffect` runs, calls `playerRef.pause()` and sets
+    local isPlaying=false. If we *also* called clearPlaying(A) at that
+    point, it would no-op because currentPlayingId is already B — but
+    semantically we don't need it anyway. The conditional clear in the
+    store is the safety net for any "late pause" race.
+  - **No coordination for the `setRate` / `setDirection` controls**. The
+    coordination only fires on play/pause; speed/direction changes on a
+    paused player don't disturb the active one. This matches the AC
+    ("démarrer la lecture sur un AudioPlayer met en pause les autres").
+  - **Test isolation note**: the `usePlaybackStore` is module-scoped global
+    state. Vitest runs each test file in its own module instance (default
+    `isolate: true`), so cross-file state doesn't leak. Within a file, the
+    `beforeEach` reset is required — without it, a previous test's
+    leftover `currentPlayingId` could trigger spurious auto-pauses on the
+    next test's mount. Apply the same reset in any future test file that
+    renders AudioPlayer.
+  - **No new dependencies**. Zustand was already installed since T4.
+  - **Coverage tool still not wired**. playbackStore is at 100% by
+    inspection (every action + initial state covered).
+
+Next up: candidates from the remaining backlog — #16 (RevealPhase: voix B
+defaults to reverse, trivial — same `initialDirection` prop already exists
+on AudioPlayer), #14 (compact AudioPlayer mode without slider — small new
+prop), #12 (pré-écoute du message A, medium scope), #9 (Tailwind setup,
+blocks #10 and #11). #16 is the cheapest next step; #9 unlocks the visual
+polish track.
+

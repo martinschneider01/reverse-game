@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPlayer, type Player } from "@/audio/wrappers/player";
 import type { Direction, Recording } from "@/audio/recording";
+import { usePlaybackStore } from "@/store/playbackStore";
 
 export type AudioPlayerProps = {
   recording: Recording;
@@ -28,14 +29,22 @@ export function AudioPlayer({
   onPlay,
 }: AudioPlayerProps) {
   const effectiveInitialDirection: Direction = lockDirection ?? initialDirection;
+  const playerId = useId();
   const playerRef = useRef<Player | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [rate, setRate] = useState(1);
   const [direction, setDirection] = useState<Direction>(effectiveInitialDirection);
 
+  const currentPlayingId = usePlaybackStore((s) => s.currentPlayingId);
+  const setPlaying = usePlaybackStore((s) => s.setPlaying);
+  const clearPlaying = usePlaybackStore((s) => s.clearPlaying);
+
   if (playerRef.current === null) {
     const p = playerFactory(audioContext);
-    p.onEnded(() => setIsPlaying(false));
+    p.onEnded(() => {
+      setIsPlaying(false);
+      clearPlaying(playerId);
+    });
     if (effectiveInitialDirection !== "forward") {
       p.setDirection(effectiveInitialDirection);
     }
@@ -46,15 +55,24 @@ export function AudioPlayer({
     playerRef.current?.load(recording);
   }, [recording]);
 
+  useEffect(() => {
+    if (isPlaying && currentPlayingId !== null && currentPlayingId !== playerId) {
+      playerRef.current?.pause();
+      setIsPlaying(false);
+    }
+  }, [currentPlayingId, isPlaying, playerId]);
+
   function handleToggle() {
     const player = playerRef.current;
     if (player === null) return;
     if (isPlaying) {
       player.pause();
       setIsPlaying(false);
+      clearPlaying(playerId);
     } else {
       player.play();
       setIsPlaying(true);
+      setPlaying(playerId);
       onPlay?.();
     }
   }

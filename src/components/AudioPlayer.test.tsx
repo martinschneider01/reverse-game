@@ -1,9 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AudioPlayer } from "./AudioPlayer";
 import type { Player } from "@/audio/wrappers/player";
 import type { Recording } from "@/audio/recording";
+import { usePlaybackStore, INITIAL_PLAYBACK_STATE } from "@/store/playbackStore";
 
 function makeFakePlayer(): {
   player: Player;
@@ -42,6 +43,10 @@ const fakeRecording: Recording = {
 const fakeCtx = {} as AudioContext;
 
 describe("<AudioPlayer />", () => {
+  beforeEach(() => {
+    usePlaybackStore.setState({ ...INITIAL_PLAYBACK_STATE });
+  });
+
   it("loads the recording and plays it on click; toggles to Pause and back to Lecture", async () => {
     const user = userEvent.setup();
     const { player, load, play, pause } = makeFakePlayer();
@@ -203,6 +208,96 @@ describe("<AudioPlayer />", () => {
 
     expect(setDirection).toHaveBeenCalledWith("reverse");
     expect(screen.queryByRole("button", { name: /sens/i })).not.toBeInTheDocument();
+  });
+
+  it("auto-pauses other AudioPlayer instances when one starts playing", async () => {
+    const user = userEvent.setup();
+    const a = makeFakePlayer();
+    const b = makeFakePlayer();
+
+    render(
+      <>
+        <AudioPlayer
+          recording={fakeRecording}
+          audioContext={fakeCtx}
+          playerFactory={() => a.player}
+        />
+        <AudioPlayer
+          recording={fakeRecording}
+          audioContext={fakeCtx}
+          playerFactory={() => b.player}
+        />
+      </>,
+    );
+
+    const initialButtons = screen.getAllByRole("button", { name: /lecture/i });
+    const playA = initialButtons[0]!;
+    const playB = initialButtons[1]!;
+
+    await user.click(playA);
+    expect(a.play).toHaveBeenCalledTimes(1);
+    expect(a.pause).not.toHaveBeenCalled();
+
+    await user.click(playB);
+    expect(b.play).toHaveBeenCalledTimes(1);
+    expect(a.pause).toHaveBeenCalledTimes(1);
+
+    const lectureButtons = await screen.findAllByRole("button", { name: /lecture|pause/i });
+    expect(lectureButtons[0]!).toHaveTextContent(/lecture/i);
+    expect(lectureButtons[1]!).toHaveTextContent(/pause/i);
+  });
+
+  it("does not pause other instances when the user pauses a player", async () => {
+    const user = userEvent.setup();
+    const a = makeFakePlayer();
+    const b = makeFakePlayer();
+
+    render(
+      <>
+        <AudioPlayer
+          recording={fakeRecording}
+          audioContext={fakeCtx}
+          playerFactory={() => a.player}
+        />
+        <AudioPlayer
+          recording={fakeRecording}
+          audioContext={fakeCtx}
+          playerFactory={() => b.player}
+        />
+      </>,
+    );
+
+    const initialButtons = screen.getAllByRole("button", { name: /lecture/i });
+    const playA = initialButtons[0]!;
+    const playB = initialButtons[1]!;
+    await user.click(playA);
+    await user.click(playA);
+
+    expect(a.pause).toHaveBeenCalledTimes(1);
+    expect(b.pause).not.toHaveBeenCalled();
+
+    await user.click(playB);
+    expect(b.play).toHaveBeenCalledTimes(1);
+    expect(a.pause).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the playback registration when natural end-of-buffer fires", async () => {
+    const user = userEvent.setup();
+    const a = makeFakePlayer();
+
+    render(
+      <AudioPlayer
+        recording={fakeRecording}
+        audioContext={fakeCtx}
+        playerFactory={() => a.player}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /lecture/i }));
+    expect(usePlaybackStore.getState().currentPlayingId).not.toBeNull();
+
+    a.endedHandler.current?.();
+    expect(usePlaybackStore.getState().currentPlayingId).toBeNull();
   });
 });
 
