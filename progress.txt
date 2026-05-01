@@ -36,3 +36,73 @@ Directory layout matches PROJECT.md §6 (audio/, audio/wrappers/, components/,
 phases/, store/ — currently with `.gitkeep` placeholders, ready for T2+).
 
 Next up: issue #3 (T2 — démo audio: enregistrement + lecture forward).
+
+2026-05-01 — Issue #3 (T2: Démo audio — enregistrement + lecture forward)
+
+Built the audio pipeline scaffold and a working demo page. After this slice the
+app records mic input, decodes the WebM/Opus blob to an AudioBuffer, and plays
+it back forward at 1×. All gates green (typecheck, 29 tests across 6 files,
+oxlint, oxfmt --check, vite build incl. PWA SW).
+
+Modules delivered:
+  - src/audio/decodeRecording.ts (+ .test.ts) — pure async fn,
+    Blob → ArrayBuffer → AudioBuffer via injected AudioContext.decodeAudioData.
+    5 tests, all paths covered (mono/stereo, decode failure, blob.arrayBuffer
+    failure short-circuits before decodeAudioData).
+  - src/audio/wrappers/recorder.ts (+ .test.ts) — factory
+    createRecorder({ maxDurationMs }) → { start, stop, cancel }. Wraps
+    getUserMedia + MediaRecorder, enforces maxDurationMs via setTimeout that
+    triggers requestStop, stops all stream tracks on finalize. 10 tests with
+    fake MediaRecorder + getUserMedia stubs.
+  - src/audio/wrappers/player.ts (+ .test.ts) — factory
+    createPlayer(ctx) → { load, play, pause, onEnded }. Recreates an
+    AudioBufferSourceNode per play() (one-shot lifecycle), disposes on
+    pause/replay, only fires onEnded when the source ended naturally (not on
+    manual pause). Resumes the AudioContext if suspended. 9 tests.
+  - src/components/AudioRecorder.tsx (+ .test.tsx) — UI: Enregistrer / Arrêter
+    buttons, Décodage state, error + Réessayer on permission denial. Uses
+    injected recorderFactory / audioContextFactory / decode for testability.
+  - src/components/AudioPlayer.tsx (+ .test.tsx) — minimal play/pause toggle,
+    auto-resets to "Lecture" label when the player reports end-of-buffer.
+
+Design notes worth flagging for the next agent:
+
+  - **Wrapper injection convention**: components accept `recorderFactory` /
+    `playerFactory` / `audioContextFactory` props with browser-API defaults.
+    Tests pass fakes; production wires up real APIs. Phase components in T4+
+    should follow the same convention so we never need a real AudioContext in
+    jsdom.
+  - **AudioRecorder emits AudioBuffer (not Recording)**: per T2 acceptance
+    criteria. T3 (issue #4) will (a) add reverseBuffer, (b) change the
+    AudioRecorder callback to emit a `Recording = { forward, reverse,
+    durationMs }`, (c) extend the player wrapper with setRate/setDirection,
+    and (d) add a slider + direction toggle to AudioPlayer. Plan to keep the
+    AudioRecorder API change in one commit to avoid two passes through the
+    component tests.
+  - **AudioContext lifecycle in App**: App.tsx lazily creates a single
+    AudioContext via a ref (audioContextRef) and shares it between the
+    recorder's decode step and the player. This matters because most browsers
+    cap the number of contexts. T4 should likely move this into a small
+    `useAudioContext` hook or the Zustand store once more components need it.
+  - **MediaRecorder mimeType**: we read `mediaRecorder.mimeType` and fall back
+    to "audio/webm" if empty (jsdom returns empty). Real browsers will return
+    a usable type; iOS Safari returns "audio/mp4". decodeAudioData handles
+    both, but note this if we ever want to inspect the container.
+  - **Recorder state machine**: a Session has an `active` flag; once
+    auto-stop or manual stop has finalized, `active` flips false but the
+    Session lingers so a late `stop()` call can still await the cached
+    finalize promise. start() can replace a finalized session. cancel() nulls
+    the session and suppresses the finalize resolution. The "active" flag is
+    the one place to look if behavior here gets weird.
+  - **No coverage tool wired into the gate** (yet). The 100% claim for
+    decodeRecording/reverseBuffer per PROJECT.md §8 is by inspection, not
+    enforced. T3 might be a good moment to add `bun run coverage` if we want
+    a CI-like signal locally.
+  - **@testing-library/user-event added** as a devDep — needed for click /
+    type interactions in RTL tests. Standard companion to RTL, no surprise.
+  - **`.gitkeep` placeholders removed** from src/audio, src/audio/wrappers,
+    src/components now that those dirs have real files. src/phases and
+    src/store still hold .gitkeep — they'll be populated in T4.
+
+Next up: issue #4 (T3 — inversion + slider vitesse + toggle direction).
+
