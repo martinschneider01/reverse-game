@@ -6,6 +6,7 @@ export type AudioPlayerProps = {
   recording: Recording;
   audioContext: AudioContext;
   initialDirection?: Direction;
+  lockDirection?: Direction;
   playerFactory?: (ctx: AudioContext) => Player;
   onPlay?: () => void;
 };
@@ -22,19 +23,21 @@ export function AudioPlayer({
   recording,
   audioContext,
   initialDirection = "forward",
+  lockDirection,
   playerFactory = createPlayer,
   onPlay,
 }: AudioPlayerProps) {
+  const effectiveInitialDirection: Direction = lockDirection ?? initialDirection;
   const playerRef = useRef<Player | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [rate, setRate] = useState(1);
-  const [direction, setDirection] = useState<Direction>(initialDirection);
+  const [direction, setDirection] = useState<Direction>(effectiveInitialDirection);
 
   if (playerRef.current === null) {
     const p = playerFactory(audioContext);
     p.onEnded(() => setIsPlaying(false));
-    if (initialDirection !== "forward") {
-      p.setDirection(initialDirection);
+    if (effectiveInitialDirection !== "forward") {
+      p.setDirection(effectiveInitialDirection);
     }
     playerRef.current = p;
   }
@@ -74,9 +77,11 @@ export function AudioPlayer({
       <button type="button" onClick={handleToggle}>
         {isPlaying ? "Pause" : "Lecture"}
       </button>
-      <button type="button" onClick={handleToggleDirection}>
-        Sens : {direction === "forward" ? "à l'endroit" : "à l'envers"}
-      </button>
+      {lockDirection === undefined && (
+        <button type="button" onClick={handleToggleDirection}>
+          Sens : {direction === "forward" ? "à l'endroit" : "à l'envers"}
+        </button>
+      )}
       <label>
         Vitesse : {rate.toFixed(2)}×
         <input

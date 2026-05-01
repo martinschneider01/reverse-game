@@ -49,13 +49,14 @@ beforeEach(() => {
 const audioContextFactory = (): AudioContext => ({}) as AudioContext;
 
 describe("<GuessingPhase />", () => {
-  it("renders the original player primed in reverse direction", () => {
+  it("renders the original player locked in reverse direction with no direction toggle", () => {
     const player = makeFakePlayer();
     render(
       <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={() => player} />,
     );
     expect(player.setDirection).toHaveBeenCalledWith("reverse");
     expect(player.load).toHaveBeenCalledWith(fakeOriginal);
+    expect(screen.queryByRole("button", { name: /sens/i })).not.toBeInTheDocument();
   });
 
   it("clicking 'Fin' transitions to confirmEnd", async () => {

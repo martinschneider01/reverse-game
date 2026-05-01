@@ -171,6 +171,39 @@ describe("<AudioPlayer />", () => {
 
     expect(setDirection).toHaveBeenCalledWith("reverse");
   });
+
+  it("hides the direction toggle when lockDirection is set and primes the player to that direction", () => {
+    const { player, setDirection } = makeFakePlayer();
+
+    render(
+      <AudioPlayer
+        recording={fakeRecording}
+        audioContext={fakeCtx}
+        playerFactory={() => player}
+        lockDirection="reverse"
+      />,
+    );
+
+    expect(setDirection).toHaveBeenCalledWith("reverse");
+    expect(screen.queryByRole("button", { name: /sens/i })).not.toBeInTheDocument();
+  });
+
+  it("lockDirection takes precedence over initialDirection", () => {
+    const { player, setDirection } = makeFakePlayer();
+
+    render(
+      <AudioPlayer
+        recording={fakeRecording}
+        audioContext={fakeCtx}
+        playerFactory={() => player}
+        initialDirection="forward"
+        lockDirection="reverse"
+      />,
+    );
+
+    expect(setDirection).toHaveBeenCalledWith("reverse");
+    expect(screen.queryByRole("button", { name: /sens/i })).not.toBeInTheDocument();
+  });
 });
 
 function fireChange(input: HTMLElement, value: string): void {

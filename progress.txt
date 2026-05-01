@@ -618,3 +618,60 @@ Next up: human reviewer runs the HITL checklist in PROJECT.md §14 on a real
 iPhone + Android, then closes issue #1. If bugs surface, file new issues
 with label `bug`. Otherwise, Mode 1 MVP ships.
 
+
+2026-05-01 — Issue #13 (Verrouiller la direction "reverse" en phase Guessing)
+
+Closed the gameplay-critical bug: in GuessingPhase, player B could previously
+toggle the original recording back to "forward" and trivially win — making the
+puzzle pointless. Now the direction is locked to "reverse" on that player,
+with no toggle button rendered.
+
+All gates green: 110 tests across 18 files (was 108), typecheck clean, oxlint
+clean, oxfmt --check clean.
+
+Modules touched:
+  - src/components/AudioPlayer.tsx — new `lockDirection?: Direction` prop.
+    When set, it (a) primes the underlying player to that direction on mount,
+    and (b) hides the "Sens : à l'endroit/à l'envers" button entirely. Takes
+    precedence over `initialDirection` if both are passed. The direction
+    state and handleToggleDirection are still defined (used by the unlocked
+    branch); they're just unreachable when locked. Two new tests cover the
+    lock behaviour and the precedence over initialDirection.
+  - src/phases/GuessingPhase.tsx — switched the original recording's
+    AudioPlayer from `initialDirection="reverse"` to `lockDirection="reverse"`.
+    The "Ta voix" player (guessRecording replay) is intentionally NOT locked
+    — B should be able to flip their own voice forward/reverse to compare.
+  - src/components/AudioPlayer.test.tsx — 2 new tests (lock hides toggle +
+    primes player, lock takes precedence over initialDirection).
+  - src/phases/GuessingPhase.test.tsx — first test renamed and extended with
+    a queryByRole assertion that no `/sens/i` button is rendered (only the
+    original player is mounted in that scenario, since guessRecording is null).
+
+Design notes worth flagging for the next agent:
+
+  - **`lockDirection` vs `initialDirection`**: kept both. `initialDirection`
+    is still useful when callers want to seed a default but allow the user
+    to flip (e.g. RevealPhase wanting B's voice to start in `reverse`,
+    issue #16). `lockDirection` is the stronger guarantee — direction is
+    fixed for the lifetime of the component. If both are passed,
+    `lockDirection` wins (covered by a test).
+  - **No reactive update on lockDirection prop changes**. Same caveat as
+    `initialDirection`: the player is primed on mount and the prop isn't
+    re-applied via useEffect. In real flow the GuessingPhase player is
+    mounted once per round, so this is fine. If a future caller toggles
+    `lockDirection` mid-life, add a useEffect that reads the prop and calls
+    setDirection — but punt until needed.
+  - **The other `AudioPlayer` in GuessingPhase (guessRecording) is unlocked**.
+    Decision: B replaying their own take wants both directions for
+    comparison. Issue #14 (compact mode without slider for "Ta voix") will
+    further trim that player but won't lock its direction.
+  - **No new dependencies**.
+
+Next up: candidates from the open backlog include #16 (default `reverse`
+on RevealPhase's "Voix de B" player — trivial, similar pattern), #14
+(compact AudioPlayer mode), #15 (single-active-player coordination, larger
+scope — touches AudioPlayer + new playbackStore). Issue #9 (Tailwind
+setup) blocks #10 and #11 (visual polish). Pick by priority: #15 is
+arguably the next "game broken without it" item since overlapping audio
+is unusable.
+

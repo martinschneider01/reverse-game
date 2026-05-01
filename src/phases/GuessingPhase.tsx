@@ -50,7 +50,7 @@ export function GuessingPhase({
         <AudioPlayer
           recording={originalRecording}
           audioContext={ctx}
-          initialDirection="reverse"
+          lockDirection="reverse"
           playerFactory={playerFactory}
           onPlay={incrementListenCount}
         />
