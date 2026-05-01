@@ -40,4 +40,19 @@ describe("<PermissionPhase />", () => {
       expect(useGameStore.getState().phase).toBe("permissionDenied");
     });
   });
+
+  it("transitions to permissionDenied when requestPermission throws synchronously", async () => {
+    // Reproduces insecure-context mobile (HTTP on LAN): navigator.mediaDevices
+    // is undefined, so getUserMedia access throws synchronously. Without the
+    // Promise.resolve wrap, this used to crash the React tree → blank screen.
+    const requestPermission = vi.fn((): Promise<MediaStream> => {
+      throw new TypeError("Cannot read properties of undefined (reading 'getUserMedia')");
+    });
+
+    render(<PermissionPhase requestPermission={requestPermission} />);
+
+    await waitFor(() => {
+      expect(useGameStore.getState().phase).toBe("permissionDenied");
+    });
+  });
 });

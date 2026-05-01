@@ -6,6 +6,9 @@ export type PermissionPhaseProps = {
 };
 
 function defaultRequestPermission(): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return Promise.reject(new Error("mediaDevices unavailable (insecure context?)"));
+  }
   return navigator.mediaDevices.getUserMedia({ audio: true });
 }
 
@@ -17,17 +20,23 @@ export function PermissionPhase({
 
   useEffect(() => {
     let cancelled = false;
-    requestPermission().then(
-      (stream) => {
-        for (const track of stream.getTracks()) {
-          track.stop();
-        }
-        if (!cancelled) permissionGranted();
-      },
-      () => {
-        if (!cancelled) permissionDenied();
-      },
-    );
+    // Promise.resolve().then(...) converts any synchronous throw from
+    // requestPermission into a rejection — without this, an insecure-context
+    // mobile browser (where navigator.mediaDevices is undefined) crashes the
+    // React tree instead of routing to permissionDenied.
+    Promise.resolve()
+      .then(() => requestPermission())
+      .then(
+        (stream) => {
+          for (const track of stream.getTracks()) {
+            track.stop();
+          }
+          if (!cancelled) permissionGranted();
+        },
+        () => {
+          if (!cancelled) permissionDenied();
+        },
+      );
     return () => {
       cancelled = true;
     };
