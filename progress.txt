@@ -985,3 +985,127 @@ unlocks #10 (Menu redesign — also HITL on the hero composition) and #11
 device test on #1. Nothing in the open backlog is fully agent-completable
 without human design input or device testing.
 
+
+2026-05-01 — Issue #9 (Setup Tailwind CSS + design tokens & shell global)
+
+Landed the foundation for the visual polish track. Tailwind CSS v4 is wired
+through Vite, design tokens declared via the v4 `@theme` directive (CSS
+variables consumable by Tailwind utility classes downstream), and a base
+`@layer base` styles every existing element type (body, main, section,
+h1/h2/h3, p, button, input, textarea, label, details, [role="alert"], range
+slider) so all phases inherit a coherent dark visual shell *without* any HTML
+or React component touch. All 124 tests across 19 files still pass, typecheck
+clean, oxlint clean, oxfmt clean, vite build OK (CSS bundle 9.37 kB gzip
+2.74 kB, PWA SW with 16 precache entries / 217.08 KiB).
+
+Modules / files delivered:
+  - src/index.css — new. `@import "tailwindcss"` + `@theme { --color-*,
+    --font-sans, --radius-* }` block (palette derived from the existing PWA
+    icon: dark indigo bg #0f0c29, surface #1e1b4b, vivid pink primary
+    #ec4899) + `@layer base` with element-selector styles. No utility
+    classes used yet — that's the job of #10/#11.
+  - src/main.tsx — added `import "./index.css"` after the App import.
+  - src/vite-env.d.ts — new. `declare module "*.css";` to satisfy
+    TS6's strict module resolution on side-effect CSS imports (without it,
+    `tsc --noEmit` errors with TS2882).
+  - vite.config.ts — registered `@tailwindcss/vite` plugin BEFORE VitePWA so
+    the generated CSS is part of the precache. Also bumped `theme_color`
+    and `background_color` from `#1a1a1a` to the new `#0f0c29` so the PWA
+    install screen / status bar match the in-app shell.
+  - index.html — `<meta name="theme-color">` updated to `#0f0c29` to match
+    the manifest (browsers read the meta tag for chrome theming on first
+    paint, before the SW takes over).
+  - package.json — `tailwindcss@4.2.4` + `@tailwindcss/vite@4.2.4` added as
+    devDeps via `bun add -d`. Bun lockfile updated.
+
+Design notes worth flagging for the next agent:
+
+  - **Tailwind v4 setup, not v3**. Significant config change vs the v3 era:
+    no `tailwind.config.js`, no `postcss.config.js`, no `content` array.
+    Tailwind v4 auto-discovers source files via the Vite plugin and
+    declares theme tokens directly in CSS via the `@theme` at-rule. This
+    is the modern, recommended path as of Tailwind 4.x. If a future agent
+    looks for `tailwind.config.ts` and doesn't find one — that's by
+    design. Tokens live in `src/index.css`.
+  - **Tokens via `@theme`**. The CSS variables defined inside `@theme` are
+    auto-exposed BOTH as utilities (e.g. `bg-bg`, `text-primary`,
+    `rounded-md`) AND as raw CSS custom properties on `:root` for
+    consumption inside hand-written CSS. This is the Tailwind v4 pattern.
+    The base layer in `index.css` uses the raw `var(--color-*)` form
+    because element-selector styles can't easily compose with utility
+    classes; future component-level styling (#10, #11) should prefer
+    utilities (`className="bg-surface rounded-md p-4"`) for ergonomics.
+  - **Why styles in `@layer base` and NOT utility classes on components**.
+    Per AC: "sans changer la mise en page ni le HTML structurel — juste
+    habiller ce qui existe". Touching every component's JSX to add
+    classNames would (a) inflate the diff, (b) risk breaking RTL tests
+    that rely on DOM structure, (c) duplicate the "consistent base" rule
+    across N call sites. Element-selector base styles give the cohesion
+    the AC asks for in one place. #10 and #11 will progressively pull
+    component-specific tweaks into utility classes per phase.
+  - **Color palette derives from the PWA icon**, not chosen freshly. The
+    icon (issue #8) already established #1e1b4b indigo + #ec4899 pink as
+    the brand. I deepened the bg to #0f0c29 for a richer "stage" feel
+    behind the indigo surface cards (visible once #11 turns containers
+    into proper cards). The text color (#f5f3ff = indigo-50) and muted
+    text (#a5b4fc = indigo-300) are Tailwind palette names but specified
+    as raw hex so the tokens are self-contained — no dependency on
+    Tailwind's preset palette.
+  - **Mobile-first by default**. Body uses `100dvh` (dynamic viewport
+    height — handles iOS safari bottom bar correctly), `main` is capped
+    at `32rem` width centered on larger screens, `font-size: 16px` on
+    inputs to prevent iOS Safari's auto-zoom-on-focus, button
+    `min-height: 44px` for tap-target compliance. No media queries
+    needed — the layout grows naturally.
+  - **`section` becomes a flex column with gap**. This works for every
+    existing phase because they all wrap their content in a single
+    `<section>` and the children are siblings with no manual margins.
+    GuessingPhase and RevealPhase have nested `<div>`s that group
+    "player + heading + counter" — those divs DON'T inherit the flex,
+    which is fine: their contents stack normally with default block
+    flow. If a future phase nests more deeply and the spacing feels
+    off, hoist the gap into a class instead of removing it from
+    `section`.
+  - **`button` defaults to primary pink**. Every existing button now has
+    the same pink-fill styling. ConfirmEndPhase has Confirm + Cancel
+    side-by-side; both are pink for now. Issue #11 explicitly lists
+    "ConfirmEndPhase — confirmation visuelle nette" as part of its scope
+    — that's where the secondary-button variant should be introduced
+    (probably via a className opt-in like `className="btn-secondary"` or
+    a Tailwind utility combo). Not in #9's scope to design that taxonomy.
+  - **Range slider styled cross-browser**. Both `::-webkit-slider-*` and
+    `::-moz-range-*` pseudo-elements set, since the AudioPlayer slider
+    is a critical control on multiple phases. Track is dark indigo,
+    thumb is pink with a light ring — matches the rest of the system.
+  - **`details` element styled** because PermissionDeniedPhase uses one
+    for the iOS/Android instructions. Otherwise the OS default looks
+    janky on dark bg.
+  - **`[role="alert"]` styled as a soft danger card** — used by
+    PermissionDenied and the recorder's error state. Red-rose tint, low
+    opacity bg, full-text contrast. Distinct enough to register as
+    "something needs attention" without being shouty.
+  - **Vitest unaffected**: `vitest.config.ts` already had `css: false`,
+    so jsdom tests don't process CSS at all. The class lookups in tests
+    are role-based (`getByRole`, `getByText`, `getByLabelText`), not
+    style-based — so no test changed shape.
+  - **TS6 needs `declare module "*.css"`**. With `verbatimModuleSyntax:
+    true` and strict module resolution, importing a CSS file as a side
+    effect needs an ambient declaration. Added in `src/vite-env.d.ts`.
+    If we ever add SVG imports or other asset side-effects, extend that
+    file.
+  - **PWA SW precache covers the new CSS**: workbox's globPatterns was
+    already `**/*.{js,css,html,png,svg,webmanifest}` since T7. The
+    generated `index-*.css` is auto-precached. Bundle size went from 15
+    entries / 207 KiB (last build) to 16 entries / 217 KiB — the +10 KiB
+    is the hashed CSS asset. Acceptable.
+  - **No new test files**. The base styles aren't behavior — they're
+    presentation. Visual regression testing is out of scope for this
+    project (anti-goal: no E2E, manual-only HITL device check).
+
+Next up: #9 unblocks both #10 (Menu redesign — HITL on hero composition)
+and #11 (rest-of-phases polish, no HITL). #11 is the larger but more
+deterministic task — it should adopt the utility-class pattern
+(className="rounded-md bg-surface p-4 ..." etc.) on the existing JSX, and
+introduce a secondary button variant for ConfirmEndPhase and the "Refaire" /
+"Retour au menu" buttons. #10 needs design input for the hero composition
+(logo? illustration? accroche text?) before implementation can start.
