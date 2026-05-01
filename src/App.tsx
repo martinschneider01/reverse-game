@@ -1,11 +1,15 @@
-import { useRef, useState } from "react";
-import { AudioRecorder } from "@/components/AudioRecorder";
-import { AudioPlayer } from "@/components/AudioPlayer";
-import type { Recording } from "@/audio/recording";
+import { useRef } from "react";
+import { useGameStore } from "@/store/gameStore";
+import { MenuPhase } from "@/phases/MenuPhase";
+import { PermissionPhase } from "@/phases/PermissionPhase";
+import { PermissionDeniedPhase } from "@/phases/PermissionDeniedPhase";
+import { HandoffAPhase } from "@/phases/HandoffAPhase";
+import { RecordingAPhase } from "@/phases/RecordingAPhase";
+import { DonePhase } from "@/phases/DonePhase";
 
 export function App() {
   const audioContextRef = useRef<AudioContext | null>(null);
-  const [recording, setRecording] = useState<Recording | null>(null);
+  const phase = useGameStore((s) => s.phase);
 
   function getAudioContext(): AudioContext {
     if (audioContextRef.current === null) {
@@ -16,14 +20,12 @@ export function App() {
 
   return (
     <main>
-      <h1>Reverso</h1>
-      <p>Démo audio — enregistre puis écoute ta voix à l'endroit ou à l'envers.</p>
-      <AudioRecorder
-        maxDurationMs={15000}
-        onRecorded={setRecording}
-        audioContextFactory={getAudioContext}
-      />
-      {recording !== null && <AudioPlayer recording={recording} audioContext={getAudioContext()} />}
+      {phase === "menu" && <MenuPhase />}
+      {phase === "permission" && <PermissionPhase />}
+      {phase === "permissionDenied" && <PermissionDeniedPhase />}
+      {phase === "handoffA" && <HandoffAPhase />}
+      {phase === "recordingA" && <RecordingAPhase audioContextFactory={getAudioContext} />}
+      {phase === "done" && <DonePhase />}
     </main>
   );
 }

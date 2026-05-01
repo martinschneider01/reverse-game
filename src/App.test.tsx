@@ -1,10 +1,27 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { App } from "./App";
+import { useGameStore, INITIAL_STATE } from "@/store/gameStore";
+
+beforeEach(() => {
+  useGameStore.setState({ ...INITIAL_STATE });
+});
 
 describe("App", () => {
-  it("renders the Reverso heading", () => {
+  it("renders the Reverso heading on the menu phase", () => {
     render(<App />);
     expect(screen.getByRole("heading", { name: /reverso/i })).toBeInTheDocument();
+  });
+
+  it("renders the HandoffA phase when the store phase is handoffA", () => {
+    useGameStore.setState({ phase: "handoffA" });
+    render(<App />);
+    expect(screen.getByRole("button", { name: /continuer/i })).toBeInTheDocument();
+  });
+
+  it("renders the PermissionDenied phase when the store phase is permissionDenied", () => {
+    useGameStore.setState({ phase: "permissionDenied" });
+    render(<App />);
+    expect(screen.getByRole("button", { name: /réessayer/i })).toBeInTheDocument();
   });
 });

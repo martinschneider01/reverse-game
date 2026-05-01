@@ -192,3 +192,98 @@ Design notes worth flagging for the next agent:
 
 Next up: issue #5 (T4 — state machine + phases Menu/Permission/HandoffA/RecordingA).
 
+2026-05-01 — Issue #5 (T4: State machine + phases Menu/Permission/HandoffA/RecordingA)
+
+Wired the first half of a real round on top of the existing audio primitives.
+App now boots into a Zustand-driven phase machine and walks Menu → Permission
+→ HandoffA → RecordingA → Done (placeholder). All gates green: 76 tests
+across 14 files, typecheck clean, oxlint clean, oxfmt --check clean, vite
+build OK (PWA SW generated).
+
+Modules delivered:
+  - src/store/gameStore.ts (+ .test.ts) — single Zustand store. State shape
+    `{ phase, originalRecording, guessRecording, notes }`. Phase type is
+    `'menu' | 'permission' | 'permissionDenied' | 'handoffA' | 'recordingA'
+    | 'done'` (the last one is a placeholder until T5 lands handoffB+). Seven
+    actions: startGame, permissionGranted, permissionDenied, retryPermission,
+    confirmHandoffA, finishRecordingA, backToMenu. Invalid actions in the
+    wrong phase are no-ops (decision documented in this note: the phase
+    component never gets to dispatch the wrong action in normal flow, and
+    no-op is less disruptive than throwing for misclick edge cases). 17 tests
+    covering each transition + each invalid-state no-op + two end-to-end
+    walks (happy path and permission-denied retry).
+  - src/phases/MenuPhase.tsx (+ .test.tsx) — heading + "Démarrer une partie"
+    button → startGame.
+  - src/phases/PermissionPhase.tsx (+ .test.tsx) — useEffect calls an injected
+    `requestPermission` (default: `navigator.mediaDevices.getUserMedia`).
+    Resolves → stops the granted stream's tracks (we only wanted the prompt;
+    AudioRecorder will request its own stream when it actually records) →
+    dispatches permissionGranted. Rejects → permissionDenied. Cancellation
+    flag in the effect cleanup avoids dispatch-after-unmount on hot
+    transitions. 2 tests cover both branches.
+  - src/phases/PermissionDeniedPhase.tsx (+ .test.tsx) — alert + collapsible
+    iOS/Android instructions + "Réessayer" button (retryPermission) +
+    "Retour au menu" button (backToMenu). 2 tests.
+  - src/phases/HandoffAPhase.tsx (+ .test.tsx) — message + "Continuer"
+    button → confirmHandoffA. 1 test.
+  - src/phases/RecordingAPhase.tsx (+ .test.tsx) — wraps the existing
+    AudioRecorder with maxDurationMs=15000, forwarding finishRecordingA as
+    onRecorded. Accepts the same injection props as AudioRecorder
+    (audioContextFactory, recorderFactory, decode, reverse) so jsdom tests
+    can stub everything. 1 golden-path test that records → stops → asserts
+    store transitioned to `done` with `originalRecording` populated.
+  - src/phases/DonePhase.tsx (+ .test.tsx) — temporary terminal screen with
+    a "Retour au menu" button. Exists only to give T4 a closed loop; T5
+    replaces it with HandoffB. 1 test.
+  - src/App.tsx — replaces the demo page. Reads `phase` from the store and
+    renders the matching phase component. Owns the lazy AudioContext via a
+    ref (same pattern as before) and passes `getAudioContext` to
+    RecordingAPhase. App.test.tsx updated: 3 tests covering menu render,
+    handoffA render via setState, permissionDenied render via setState.
+
+Design notes worth flagging for the next agent:
+
+  - **Invalid-state actions are no-ops, not throws**. Implementation is
+    `set((s) => s.phase === EXPECTED ? { ... } : {})`. Reasoning: the UI
+    only exposes an action's button while in the corresponding phase, so
+    in practice the wrong-phase path is dead. Choosing no-op over throw
+    means a hot-reload, double-click, or stale-closure dispatch can't crash
+    the app. If T5+ ever needs to *detect* an invalid dispatch (e.g. for
+    logging), revisit — the cheapest path is to switch to throws and let
+    the call sites catch.
+  - **Test reset uses merge, not replace**. `useGameStore.setState({
+    ...INITIAL_STATE })` (no `true` second arg). The replace mode wipes the
+    action functions off the store, breaking subsequent action calls in
+    the same test. This is documented in zustand but is a foot-gun on
+    first encounter. INITIAL_STATE is exported for this exact use.
+  - **PermissionPhase calls getUserMedia and immediately stops the tracks**.
+    Why: the only goal of this phase is to surface the browser permission
+    prompt. The actual recording stream is requested again by the recorder
+    wrapper inside RecordingAPhase. After permission is granted, the
+    second getUserMedia call resolves silently with no prompt. This avoids
+    keeping a hot mic open across the HandoffA screen. Confirmed in iOS
+    Safari and Chrome behavior docs; not e2e-tested (anti-goal).
+  - **AudioContext is owned by App, passed as a factory**. Same pattern as
+    pre-T4. RecordingAPhase takes `audioContextFactory: () => AudioContext`
+    and forwards it to AudioRecorder. If T5 needs the same context in
+    GuessingPhase (likely — both AudioRecorder and AudioPlayer want it),
+    the right move is to extract a `useAudioContext` hook or stash it in
+    the store. Don't create two contexts — most browsers cap them.
+  - **Phase components dispatch via the store, not props**. They call
+    `useGameStore((s) => s.action)` directly. This makes them harder to
+    unit-test in isolation, but the store is itself well-tested and easy
+    to seed via setState — net positive ergonomics. The same convention
+    should hold for T5's HandoffB / Guessing / ConfirmEnd phases.
+  - **DonePhase is throw-away**. It exists only so the T4 loop closes and
+    a user doesn't get stuck. T5 (issue #6) replaces it with HandoffBPhase
+    and the `done` value drops out of the Phase union. Don't add features
+    here.
+  - **Zustand v5 added** (`bun add zustand` → 5.0.12). PROJECT.md §4 lists
+    zustand without a version; no surprise.
+  - **Pre-commit gate verification skipped** in this session — I ran the
+    individual scripts (typecheck/test/lint/format:check/build) but not
+    `husky` itself. The hook should still fire on commit; if it fails
+    because of staged-only oxfmt issues, run `bun run format` and re-stage.
+
+Next up: issue #6 (T5 — HandoffB + Guessing + ConfirmEnd).
+
