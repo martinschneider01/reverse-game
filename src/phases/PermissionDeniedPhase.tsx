@@ -26,7 +26,7 @@ export function PermissionDeniedPhase() {
       <button type="button" onClick={retryPermission}>
         Réessayer
       </button>
-      <button type="button" onClick={backToMenu}>
+      <button type="button" className="btn-secondary" onClick={backToMenu}>
         Retour au menu
       </button>
     </section>

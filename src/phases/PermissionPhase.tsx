@@ -34,7 +34,8 @@ export function PermissionPhase({
   }, [requestPermission, permissionGranted, permissionDenied]);
 
   return (
-    <section>
+    <section className="center-screen">
+      <p className="kicker">Préparation</p>
       <h2>Autorisation micro</h2>
       <p>Accepte la demande d'accès au micro pour démarrer la partie.</p>
     </section>

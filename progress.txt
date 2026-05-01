@@ -1109,3 +1109,195 @@ deterministic task — it should adopt the utility-class pattern
 introduce a secondary button variant for ConfirmEndPhase and the "Refaire" /
 "Retour au menu" buttons. #10 needs design input for the hero composition
 (logo? illustration? accroche text?) before implementation can start.
+
+
+2026-05-01 — Issue #11 (Polish visuel des autres phases)
+
+Visual polish pass on every phase except MenuPhase (held back for #10
+HITL design input). All 124 tests across 19 files still pass, typecheck
+clean, oxlint clean, oxfmt --check clean, vite build OK (CSS bundle now
+12.81 kB gzip 3.38 kB — was 9.37 kB / 2.74 kB after #9; +3.4 kB raw is
+the new component layer). PWA SW 16 entries / 221.73 KiB.
+
+Approach: progressive disclosure on top of #9. The base element-selector
+styles in `index.css` already gave coherence to every existing button /
+input / heading. #11 adds a `@layer components` of named classes that
+phases opt into via `className`, plus minimal JSX additions (one
+`<p className="kicker">` per role-defining phase, `<div className="card">`
+wrappers for grouping). No HTML structure changed in ways that would
+break role/text-based RTL queries — every existing test still passes
+unmodified.
+
+Modules touched:
+
+  - src/index.css — new `@layer components` block adds:
+    * `.btn-secondary` — surface bg, border, muted hover. Used for the
+      universal "Retour au menu" / "Refaire" / "Annuler" / retry-after-
+      error secondary actions.
+    * `.btn-danger` — uses `--color-danger` (rose-500) for the "stop the
+      live recording" / "confirm destructive end" actions where the user
+      is committing to something irreversible.
+    * `.card` — surface bg, border, rounded-lg, padding 1.25rem,
+      flex-col with internal gap. Wraps the per-section content blocks
+      in GuessingPhase, RevealPhase, RecordingAPhase preview, and the
+      AudioRecorder slot in RecordingAPhase idle.
+    * `.kicker` — small caps eyebrow above the h2. Used on every phase
+      with a role to communicate ("Joueur A", "Joueur B", "Préparation",
+      "Round terminé"). Replaces the prior pattern of a redundant
+      h2="Joueur A" + a separate body paragraph; the h2 now carries the
+      actual instruction and the kicker is the role label.
+    * `.counter-chip` — pill-style "Écoutes : N" badge in
+      GuessingPhase. `align-self: flex-start` so it doesn't stretch to
+      card width.
+    * `.recording-pulse` — 0.75rem red dot with a `recording-pulse`
+      keyframes animation (1.2s ease-in-out infinite, opacity+scale).
+      Marks the AudioRecorder "recording" state visually distinct from
+      idle/decoding/error per AC.
+    * `.recorder-status` / `.recorder-stack` — flex helpers for the
+      AudioRecorder layout (status row inline, then the stop button on
+      its own line).
+    * `.center-screen` — `min-height: 50dvh; justify-content: center;
+      text-align: center;`. Used on transition / non-interactive phases
+      (HandoffA, HandoffB, Permission, ConfirmEnd) to vertically anchor
+      a sparse layout instead of slumping to the top.
+    * `.reveal-notes` — muted color for the empty-state "Aucune note
+      prise." line (and the "Décodage…" line in AudioRecorder).
+    * `@keyframes recording-pulse` declared at top level (outside
+      `@layer components` because keyframes can't live in a layer).
+
+  - src/components/AudioRecorder.tsx — visual state polish per AC.
+    * `idle` → primary pink "Enregistrer" button (unchanged behavior).
+    * `recording` → `.recorder-status` row (pulsing red dot +
+      "Enregistrement en cours…" muted text), THEN a `.btn-danger`
+      "Arrêter" button on its own line. The danger-red signals "this
+      stops a live process". Tests still find the button by role+name.
+    * `decoding` → italic muted "Décodage…" with `aria-live="polite"`
+      so screen readers announce the transition.
+    * `error` → existing `[role="alert"]` (already styled by base CSS as
+      a soft danger card from #9) + `.btn-secondary` "Réessayer" so
+      it's visually subordinate to the alert itself.
+    * Outer wrapper switched from anonymous `<div>` to
+      `<div className="recorder-stack">` (flex-col gap-3) so spacing
+      between status row and button is consistent across states.
+
+  - src/phases/HandoffAPhase.tsx, HandoffBPhase.tsx — converted role
+    label from `<h2>` to `<p className="kicker">`, promoted the
+    actionable instruction to `<h2>`, added `.center-screen` to the
+    section. HandoffA copy split into two paragraphs collapsed to one;
+    HandoffB heading became "Passe le téléphone à B".
+
+  - src/phases/RecordingAPhase.tsx — added kicker, wrapped the recorder
+    and the preview player in `.card` divs, reordered the post-record
+    buttons so the primary "Passer à B" is on top and the secondary
+    `.btn-secondary` "Refaire" is below. Test order is role/name-based
+    and survives the swap.
+
+  - src/phases/GuessingPhase.tsx — added kicker, wrapped each section
+    (original-with-counter / notes / "Ta voix" recorder+player) in a
+    `.card`. Counter switched from inline `<p>` to
+    `<p className="counter-chip">` (aria-label preserved for the test).
+    "Fin" button promoted to `.btn-danger` since ending the round is
+    irreversible.
+
+  - src/phases/ConfirmEndPhase.tsx — added `.center-screen`. "Confirmer"
+    is now `.btn-danger` (irreversible reveal); "Annuler" is now
+    `.btn-secondary`. This is the canonical example of the new variant
+    taxonomy the next agent should pattern-match on.
+
+  - src/phases/RevealPhase.tsx — added kicker ("Round terminé"),
+    wrapped the original-player, guess-player, and notes blocks in
+    `.card`s. "Nouvelle partie" stays primary, "Retour au menu" is now
+    `.btn-secondary`. The empty-notes line uses `.reveal-notes` for
+    muted color. The defensive null-original branch also gets the
+    `.btn-secondary` on its lone "Retour au menu".
+
+  - src/phases/PermissionPhase.tsx — added kicker "Préparation" and
+    `.center-screen` to give it the same "transition" feel as the
+    handoffs. Effect logic untouched.
+
+  - src/phases/PermissionDeniedPhase.tsx — "Retour au menu" is now
+    `.btn-secondary`. The `details` element was already styled by base
+    CSS from #9. The `[role="alert"]` was already styled too.
+
+Design notes worth flagging for the next agent:
+
+  - **Why `@layer components` and not `@layer utilities` / inline
+    Tailwind soup**: utility classes like
+    `className="bg-surface border border-border rounded-lg p-5 flex
+    flex-col gap-3"` would have to be repeated at every card site.
+    Pulling that into `.card` keeps the JSX scannable and concentrates
+    visual decisions in `index.css`. Same logic for `.btn-secondary`,
+    `.btn-danger`, etc. — these are component-level recipes, not
+    one-off utility compositions. Tailwind v4's `@layer components` is
+    the documented place for exactly this pattern (overrides base, is
+    overridden by utilities).
+
+  - **No `tailwind.config.ts` was needed (still)**. Auto-discovery on
+    Vite picks up the new class names from JSX. Since I ended up
+    defining most of the class recipes in CSS rather than as utility
+    compositions, even fewer Tailwind utilities are referenced from
+    JSX than I initially planned. That's fine.
+
+  - **Button variant taxonomy**:
+    * default `<button>` = primary action (`bg-primary` pink, white
+      text). 90% of CTAs.
+    * `.btn-secondary` = neutral / cancel / back-to-menu / retry. NEVER
+      below `<button>` directly; always opt-in via className.
+    * `.btn-danger` = irreversible destructive action ("Arrêter" mid-
+      recording, "Confirmer" the end-of-round, "Fin" the guessing).
+      Only three sites today; if a fourth shows up, reuse this class
+      rather than inventing a new variant.
+    Future agent: if a "tertiary" / ghost variant is needed (text-only,
+    no bg/border), add `.btn-ghost` and document it here.
+
+  - **Kicker pattern is now the standard for "phase context"**. Every
+    phase that needs to signal "whose turn / what step" puts a small
+    uppercase kicker above the `<h2>`. Existing phases use:
+    * "Joueur A" → HandoffA, RecordingA (both sub-states)
+    * "Joueur B" → HandoffB, GuessingPhase
+    * "Préparation" → PermissionPhase
+    * "Round terminé" → RevealPhase
+    PermissionDeniedPhase and ConfirmEndPhase don't get kickers because
+    they're system-level interrupts, not part of the round flow.
+
+  - **`.center-screen` uses `min-h: 50dvh`**, not `100dvh`. The parent
+    `<main>` already has its own padding and max-width from #9, and
+    50dvh is enough to vertically anchor a 4-line layout without
+    creating awkward whitespace on tall viewports. If we ever add a
+    long copy on a centered phase, switch that phase to plain section
+    layout — center-screen is for sparse content.
+
+  - **`.card` is flex-col with gap 0.75rem**, slightly tighter than
+    the section-level 1rem gap from base CSS. That creates a subtle
+    visual inset hierarchy: section gaps (between cards) are larger
+    than within-card gaps. The eye picks it up as nested grouping
+    without needing borders or shadows beyond the card's own border.
+
+  - **No `.btn-danger` on "Fin" and "Confirmer" both** — yes, both end
+    up red-tinted. That's intentional: "Fin" arms the destructive
+    action, "Confirmer" pulls the trigger. The dialog-modal context
+    (role="dialog" aria-modal="true") and the explicit "Cette action
+    est définitive." copy are what differentiate "are you sure" from
+    "go ahead" — the button color reinforces the gravity in both.
+
+  - **AudioRecorder error state still uses `[role="alert"]`** — base
+    CSS from #9 already styles that as a soft danger card. The
+    `.btn-secondary` retry below it is consciously subordinate; the
+    user's visual focus should be on reading the error message first.
+
+  - **No new tests**. This is presentation-only — no logic changed, so
+    every existing role/name/text/aria-label assertion still passes.
+    The AC explicitly says "Tests existants passent (logique
+    inchangée)" — I did not invent visual-regression coverage because
+    that's an established anti-goal of the project.
+
+  - **CSS bundle delta**: 9.37 → 12.81 kB raw (+3.4 kB), 2.74 → 3.38 kB
+    gzip (+0.6 kB). Acceptable for a round of design tokens being
+    actually used. PWA SW precache went from 217 KiB to 221.73 KiB, in
+    line with the +CSS.
+
+Next up: only #10 (Menu redesign — HITL on hero composition) remains
+agent-blockable in the visual-polish track, plus the standing HITL
+device test on #1. The Mode 1 MVP is fully implemented and visually
+coherent; the only remaining "code" work needs a human in the loop on
+copy / illustration choices.

@@ -18,7 +18,7 @@ export function RevealPhase({ audioContextFactory, playerFactory }: RevealPhaseP
     return (
       <section>
         <p role="alert">Aucun enregistrement à révéler.</p>
-        <button type="button" onClick={backToMenu}>
+        <button type="button" className="btn-secondary" onClick={backToMenu}>
           Retour au menu
         </button>
       </section>
@@ -29,9 +29,10 @@ export function RevealPhase({ audioContextFactory, playerFactory }: RevealPhaseP
 
   return (
     <section>
+      <p className="kicker">Round terminé</p>
       <h2>Révélation</h2>
 
-      <div>
+      <div className="card">
         <h3>Enregistrement original</h3>
         <AudioPlayer
           recording={originalRecording}
@@ -41,7 +42,7 @@ export function RevealPhase({ audioContextFactory, playerFactory }: RevealPhaseP
       </div>
 
       {guessRecording !== null && (
-        <div>
+        <div className="card">
           <h3>Voix du joueur B</h3>
           <AudioPlayer
             recording={guessRecording}
@@ -52,10 +53,10 @@ export function RevealPhase({ audioContextFactory, playerFactory }: RevealPhaseP
         </div>
       )}
 
-      <div>
+      <div className="card">
         <h3>Notes</h3>
         {notes === "" ? (
-          <p>
+          <p className="reveal-notes">
             <em>Aucune note prise.</em>
           </p>
         ) : (
@@ -66,7 +67,7 @@ export function RevealPhase({ audioContextFactory, playerFactory }: RevealPhaseP
       <button type="button" onClick={newRound}>
         Nouvelle partie
       </button>
-      <button type="button" onClick={backToMenu}>
+      <button type="button" className="btn-secondary" onClick={backToMenu}>
         Retour au menu
       </button>
     </section>

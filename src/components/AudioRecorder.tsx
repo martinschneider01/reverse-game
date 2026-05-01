@@ -62,25 +62,35 @@ export function AudioRecorder({
   }
 
   return (
-    <div>
+    <div className="recorder-stack">
       {status === "idle" && (
         <button type="button" onClick={handleStart}>
           Enregistrer
         </button>
       )}
       {status === "recording" && (
-        <button type="button" onClick={handleStop}>
-          Arrêter
-        </button>
+        <>
+          <div className="recorder-status">
+            <span className="recording-pulse" aria-hidden="true" />
+            <span>Enregistrement en cours…</span>
+          </div>
+          <button type="button" className="btn-danger" onClick={handleStop}>
+            Arrêter
+          </button>
+        </>
       )}
-      {status === "decoding" && <p>Décodage…</p>}
+      {status === "decoding" && (
+        <p className="reveal-notes" aria-live="polite">
+          <em>Décodage…</em>
+        </p>
+      )}
       {status === "error" && (
-        <div>
+        <>
           <p role="alert">Erreur : {error}</p>
-          <button type="button" onClick={() => setStatus("idle")}>
+          <button type="button" className="btn-secondary" onClick={() => setStatus("idle")}>
             Réessayer
           </button>
-        </div>
+        </>
       )}
     </div>
   );

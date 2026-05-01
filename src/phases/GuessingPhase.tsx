@@ -43,9 +43,10 @@ export function GuessingPhase({
 
   return (
     <section>
+      <p className="kicker">Joueur B</p>
       <h2>Devine la phrase</h2>
 
-      <div>
+      <div className="card">
         <h3>Enregistrement original (à l'envers)</h3>
         <AudioPlayer
           recording={originalRecording}
@@ -54,12 +55,16 @@ export function GuessingPhase({
           playerFactory={playerFactory}
           onPlay={incrementListenCount}
         />
-        <p aria-label="Compteur d'écoutes">Écoutes : {listenCount}</p>
+        <p aria-label="Compteur d'écoutes" className="counter-chip">
+          Écoutes : {listenCount}
+        </p>
       </div>
 
-      <NotesEditor value={notes} onChange={setNotes} />
+      <div className="card">
+        <NotesEditor value={notes} onChange={setNotes} />
+      </div>
 
-      <div>
+      <div className="card">
         <h3>Ta voix</h3>
         <AudioRecorder
           maxDurationMs={MAX_DURATION_MS}
@@ -79,7 +84,7 @@ export function GuessingPhase({
         )}
       </div>
 
-      <button type="button" onClick={endGuessing}>
+      <button type="button" className="btn-danger" onClick={endGuessing}>
         Fin
       </button>
     </section>

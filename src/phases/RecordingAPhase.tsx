@@ -29,34 +29,40 @@ export function RecordingAPhase({
   if (preview === null) {
     return (
       <section>
+        <p className="kicker">Joueur A</p>
         <h2>Enregistrement</h2>
-        <p>Prononce une phrase courte (max 15 s).</p>
-        <AudioRecorder
-          maxDurationMs={MAX_DURATION_MS}
-          onRecorded={setPreview}
-          audioContextFactory={audioContextFactory}
-          recorderFactory={recorderFactory}
-          decode={decode}
-          reverse={reverse}
-        />
+        <p>Prononce une phrase courte (15 s max).</p>
+        <div className="card">
+          <AudioRecorder
+            maxDurationMs={MAX_DURATION_MS}
+            onRecorded={setPreview}
+            audioContextFactory={audioContextFactory}
+            recorderFactory={recorderFactory}
+            decode={decode}
+            reverse={reverse}
+          />
+        </div>
       </section>
     );
   }
 
   return (
     <section>
+      <p className="kicker">Joueur A</p>
       <h2>Pré-écoute</h2>
       <p>Vérifie ta prise avant de passer le téléphone à B.</p>
-      <AudioPlayer
-        recording={preview}
-        audioContext={audioContextFactory()}
-        playerFactory={playerFactory}
-      />
-      <button type="button" onClick={() => setPreview(null)}>
-        Refaire
-      </button>
+      <div className="card">
+        <AudioPlayer
+          recording={preview}
+          audioContext={audioContextFactory()}
+          playerFactory={playerFactory}
+        />
+      </div>
       <button type="button" onClick={() => finishRecordingA(preview)}>
         Passer à B
+      </button>
+      <button type="button" className="btn-secondary" onClick={() => setPreview(null)}>
+        Refaire
       </button>
     </section>
   );
