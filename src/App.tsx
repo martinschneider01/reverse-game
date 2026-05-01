@@ -5,7 +5,10 @@ import { PermissionPhase } from "@/phases/PermissionPhase";
 import { PermissionDeniedPhase } from "@/phases/PermissionDeniedPhase";
 import { HandoffAPhase } from "@/phases/HandoffAPhase";
 import { RecordingAPhase } from "@/phases/RecordingAPhase";
-import { DonePhase } from "@/phases/DonePhase";
+import { HandoffBPhase } from "@/phases/HandoffBPhase";
+import { GuessingPhase } from "@/phases/GuessingPhase";
+import { ConfirmEndPhase } from "@/phases/ConfirmEndPhase";
+import { RevealPhase } from "@/phases/RevealPhase";
 
 export function App() {
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -25,7 +28,10 @@ export function App() {
       {phase === "permissionDenied" && <PermissionDeniedPhase />}
       {phase === "handoffA" && <HandoffAPhase />}
       {phase === "recordingA" && <RecordingAPhase audioContextFactory={getAudioContext} />}
-      {phase === "done" && <DonePhase />}
+      {phase === "handoffB" && <HandoffBPhase />}
+      {phase === "guessing" && <GuessingPhase audioContextFactory={getAudioContext} />}
+      {phase === "confirmEnd" && <ConfirmEndPhase />}
+      {phase === "reveal" && <RevealPhase />}
     </main>
   );
 }

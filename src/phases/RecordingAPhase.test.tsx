@@ -18,7 +18,7 @@ function makeFakeRecorder(blob: Blob): Recorder {
 }
 
 describe("<RecordingAPhase />", () => {
-  it("forwards the recorded Recording to finishRecordingA, transitioning to done", async () => {
+  it("forwards the recorded Recording to finishRecordingA, transitioning to handoffB", async () => {
     const user = userEvent.setup();
     const blob = new Blob([new Uint8Array([1])], { type: "audio/webm" });
     const recorder = makeFakeRecorder(blob);
@@ -51,7 +51,7 @@ describe("<RecordingAPhase />", () => {
 
     await vi.waitFor(() => {
       const s = useGameStore.getState();
-      expect(s.phase).toBe("done");
+      expect(s.phase).toBe("handoffB");
       expect(s.originalRecording).toEqual({
         forward,
         reverse: reversed,

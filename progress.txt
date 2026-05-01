@@ -287,3 +287,126 @@ Design notes worth flagging for the next agent:
 
 Next up: issue #6 (T5 — HandoffB + Guessing + ConfirmEnd).
 
+2026-05-01 — Issue #6 (T5: HandoffB + Guessing + ConfirmEnd)
+
+Closed the second half of a round. After this slice the app walks Menu →
+Permission → HandoffA → RecordingA → HandoffB → Guessing → ConfirmEnd →
+Reveal (placeholder), and a cancel from ConfirmEnd returns to Guessing
+without losing notes / guess recording / listen counter. All gates green:
+102 tests across 18 files, typecheck clean, oxlint clean, oxfmt --check
+clean, vite build OK (PWA SW generated).
+
+Modules delivered:
+  - src/store/gameStore.ts — Phase union extended:
+    `'menu' | 'permission' | 'permissionDenied' | 'handoffA' | 'recordingA'
+    | 'handoffB' | 'guessing' | 'confirmEnd' | 'reveal'`. The placeholder
+    `done` from T4 is gone. `finishRecordingA` now transitions to
+    `handoffB` (was `done`). New state slice `listenCount: number` (in
+    INITIAL_STATE → 0). New actions:
+      • confirmHandoffB (handoffB → guessing)
+      • setNotes(notes) — guarded to guessing phase only
+      • setGuessRecording(rec) — guarded to guessing phase only;
+        overwrites previous (one-prise convention from PROJECT.md §3.3)
+      • incrementListenCount — unguarded, just bumps the counter
+      • endGuessing (guessing → confirmEnd)
+      • cancelEnd (confirmEnd → guessing) — preserves notes / guess /
+        counter naturally because we only set `phase`
+      • confirmEnd (confirmEnd → reveal)
+    backToMenu still resets to INITIAL_STATE so listenCount goes back to
+    0 too. 23 store tests now (was 17), covering every transition + every
+    invalid-state no-op + two end-to-end walks (full happy path through
+    reveal, and cancelEnd round-trip preserving slices).
+  - src/components/NotesEditor.tsx (+ .test.tsx) — minimal controlled
+    multi-line textarea. `value` + `onChange` props, that's it. Labelled
+    "Notes" via wrapping label so the textarea is found by RTL via
+    `getByRole('textbox', { name: /notes/i })`. 2 tests.
+  - src/components/AudioPlayer.tsx — added optional `onPlay?: () => void`
+    callback fired ONLY when transitioning idle → playing (not on the
+    pause click, not on resume from end-of-buffer). GuessingPhase wires
+    this up to incrementListenCount on the original player. 1 new test
+    asserts onPlay fires exactly once per play click and not on pause.
+  - src/phases/HandoffBPhase.tsx (+ .test.tsx) — message + "Continuer"
+    button → confirmHandoffB. Symmetric to HandoffAPhase. 1 test.
+  - src/phases/GuessingPhase.tsx (+ .test.tsx) — composes everything:
+      • AudioPlayer for `originalRecording` with `initialDirection="reverse"`
+        and `onPlay={incrementListenCount}`
+      • A `<p aria-label="Compteur d'écoutes">Écoutes : {listenCount}</p>`
+        next to the original player (informative, non-blocking — stored
+        in the gameStore so it survives the cancelEnd round-trip)
+      • NotesEditor bound to gameStore.notes via setNotes
+      • AudioRecorder (max 15s) for B's voice, onRecorded → setGuessRecording
+        (overwrites silently per PROJECT.md §3.3)
+      • A second AudioPlayer for `guessRecording` rendered conditionally
+        only after the first take exists
+      • "Fin" button → endGuessing
+    Defensive: if `originalRecording` is null (entered the phase via a
+    direct setState, not the normal flow), renders an alert and no players.
+    Accepts the same injection props as RecordingAPhase
+    (audioContextFactory, recorderFactory, decode, reverse) plus a
+    playerFactory passed through to AudioPlayer for jsdom tests. 5 tests:
+    primes player to reverse, "Fin" → confirmEnd, NotesEditor wired,
+    listen counter increments and updates UI, recording → store
+    population + second player appears.
+  - src/phases/ConfirmEndPhase.tsx (+ .test.tsx) — `<section role="dialog"
+    aria-modal="true">` with "Confirmer" → confirmEnd action and
+    "Annuler" → cancelEnd action. 2 tests covering both buttons; the
+    cancel test asserts notes / guessRecording / listenCount survive.
+  - src/phases/RevealPhase.tsx (+ .test.tsx) — placeholder. Heading,
+    explanation, "Retour au menu" button (backToMenu). T6 (issue #7)
+    replaces this with the real reveal screen. 1 test.
+  - src/phases/DonePhase.tsx (+ .test.tsx) — REMOVED. Was a T4
+    placeholder; now gone, replaced by `RevealPhase` placeholder + new
+    real terminal phases.
+  - src/App.tsx — phase switch updated: removed `done` branch, added
+    `handoffB`, `guessing`, `confirmEnd`, `reveal`. GuessingPhase shares
+    the same lazy AudioContext (via getAudioContext) as RecordingAPhase.
+
+Design notes worth flagging for the next agent:
+
+  - **listenCount lives in the store, not in GuessingPhase local state**.
+    Reason: cancelEnd transitions confirmEnd → guessing, which unmounts
+    the GuessingPhase component (App swaps phase components — only one
+    renders at a time). Local state would reset on remount; the AC
+    explicitly requires the counter to survive cancelEnd. Putting it in
+    the store also means backToMenu (which already wipes to
+    INITIAL_STATE) clears it for free. The AudioPlayer's local rate /
+    direction state still resets on remount — that's not in the AC, so
+    we leave it.
+  - **AudioPlayer.onPlay fires only on idle → playing**. Not on pause,
+    not on the synthetic "ended" event. This is what we want for a
+    listen counter ("how many distinct listens did B do?"); a different
+    counting policy (e.g. count every press) would require revisiting.
+    The hook is deliberately optional — pre-T5 callers of AudioPlayer
+    don't need to change.
+  - **GuessingPhase null-guard on originalRecording**. The phase should
+    only ever be reached after recordingA, so originalRecording is
+    guaranteed non-null in real flow. The guard exists for defensive
+    rendering when tests / hot-reloads jump straight into the phase via
+    setState. Same pattern is appropriate for RevealPhase in T6 (it
+    needs both originalRecording and guessRecording).
+  - **Two AudioPlayer instances share one AudioContext**. The
+    GuessingPhase calls audioContextFactory() once at the top and passes
+    the same ctx to both players. App.tsx's getAudioContext is memoized
+    via a ref so subsequent calls return the same instance — important
+    because most browsers cap AudioContexts. If a future phase needs a
+    different ctx per player, that's a new design decision.
+  - **Action naming follows PROJECT.md §5.1**. We use `endGuessing` for
+    the request-to-end (guessing → confirmEnd) and reserve `confirmEnd`
+    for the actual confirmation action (confirmEnd → reveal), matching
+    the spec. `cancelEnd` is also from §5.1.
+  - **Phases that take audioContextFactory now: RecordingAPhase,
+    GuessingPhase**. RevealPhase will also need it in T6 (two players).
+    Keep the factory pattern — don't move to a hook or a context yet,
+    it's overkill for two callers and one prop.
+  - **Notes textarea uses a plain controlled input**. No debounce, no
+    persistence — typing every character calls the store action. The
+    store's setNotes is a single set() so this is cheap, and the
+    no-persistence anti-goal (PROJECT.md §2) means we don't need to
+    worry about write-amplification.
+  - **No coverage tool wired into the gate** (still). The store is at
+    100% by inspection (every action has a happy-path + invalid-state
+    test). reverseBuffer / decodeRecording also still 100% by
+    inspection.
+
+Next up: issue #7 (T6 — Phase Reveal + flow Nouvelle partie / Retour menu).
+

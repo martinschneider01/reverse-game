@@ -7,6 +7,7 @@ export type AudioPlayerProps = {
   audioContext: AudioContext;
   initialDirection?: Direction;
   playerFactory?: (ctx: AudioContext) => Player;
+  onPlay?: () => void;
 };
 
 const MIN_RATE = 0.25;
@@ -22,6 +23,7 @@ export function AudioPlayer({
   audioContext,
   initialDirection = "forward",
   playerFactory = createPlayer,
+  onPlay,
 }: AudioPlayerProps) {
   const playerRef = useRef<Player | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -50,6 +52,7 @@ export function AudioPlayer({
     } else {
       player.play();
       setIsPlaying(true);
+      onPlay?.();
     }
   }
 

@@ -133,6 +133,30 @@ describe("<AudioPlayer />", () => {
     expect(setDirection).toHaveBeenLastCalledWith("forward");
   });
 
+  it("fires onPlay when the user starts playback (not when pausing)", async () => {
+    const user = userEvent.setup();
+    const { player } = makeFakePlayer();
+    const onPlay = vi.fn();
+
+    render(
+      <AudioPlayer
+        recording={fakeRecording}
+        audioContext={fakeCtx}
+        playerFactory={() => player}
+        onPlay={onPlay}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /lecture/i }));
+    expect(onPlay).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: /pause/i }));
+    expect(onPlay).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: /lecture/i }));
+    expect(onPlay).toHaveBeenCalledTimes(2);
+  });
+
   it("starts with the configured initialDirection", () => {
     const { player, setDirection } = makeFakePlayer();
 

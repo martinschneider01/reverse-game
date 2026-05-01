@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { DonePhase } from "./DonePhase";
+import { RevealPhase } from "./RevealPhase";
 import { useGameStore, INITIAL_STATE } from "@/store/gameStore";
 import type { Recording } from "@/audio/recording";
 
@@ -14,15 +14,15 @@ const fakeRecording: Recording = {
 beforeEach(() => {
   useGameStore.setState({
     ...INITIAL_STATE,
-    phase: "done",
+    phase: "reveal",
     originalRecording: fakeRecording,
   });
 });
 
-describe("<DonePhase />", () => {
-  it("clicking 'Retour au menu' resets to menu and clears the recording", async () => {
+describe("<RevealPhase />", () => {
+  it("clicking 'Retour au menu' resets the store and transitions to menu", async () => {
     const user = userEvent.setup();
-    render(<DonePhase />);
+    render(<RevealPhase />);
     await user.click(screen.getByRole("button", { name: /retour au menu/i }));
     const s = useGameStore.getState();
     expect(s.phase).toBe("menu");

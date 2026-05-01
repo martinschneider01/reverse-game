@@ -1,13 +1,23 @@
 import { create } from "zustand";
 import type { Recording } from "@/audio/recording";
 
-export type Phase = "menu" | "permission" | "permissionDenied" | "handoffA" | "recordingA" | "done";
+export type Phase =
+  | "menu"
+  | "permission"
+  | "permissionDenied"
+  | "handoffA"
+  | "recordingA"
+  | "handoffB"
+  | "guessing"
+  | "confirmEnd"
+  | "reveal";
 
 export type GameState = {
   phase: Phase;
   originalRecording: Recording | null;
   guessRecording: Recording | null;
   notes: string;
+  listenCount: number;
 
   startGame: () => void;
   permissionGranted: () => void;
@@ -15,25 +25,40 @@ export type GameState = {
   retryPermission: () => void;
   confirmHandoffA: () => void;
   finishRecordingA: (recording: Recording) => void;
+  confirmHandoffB: () => void;
+  setNotes: (notes: string) => void;
+  setGuessRecording: (recording: Recording) => void;
+  incrementListenCount: () => void;
+  endGuessing: () => void;
+  cancelEnd: () => void;
+  confirmEnd: () => void;
   backToMenu: () => void;
 };
 
-type Slice = Omit<
-  GameState,
+type ActionKey =
   | "startGame"
   | "permissionGranted"
   | "permissionDenied"
   | "retryPermission"
   | "confirmHandoffA"
   | "finishRecordingA"
-  | "backToMenu"
->;
+  | "confirmHandoffB"
+  | "setNotes"
+  | "setGuessRecording"
+  | "incrementListenCount"
+  | "endGuessing"
+  | "cancelEnd"
+  | "confirmEnd"
+  | "backToMenu";
+
+type Slice = Omit<GameState, ActionKey>;
 
 export const INITIAL_STATE: Slice = {
   phase: "menu",
   originalRecording: null,
   guessRecording: null,
   notes: "",
+  listenCount: 0,
 };
 
 export const useGameStore = create<GameState>((set) => ({
@@ -52,7 +77,24 @@ export const useGameStore = create<GameState>((set) => ({
   confirmHandoffA: () => set((s) => (s.phase === "handoffA" ? { phase: "recordingA" } : {})),
 
   finishRecordingA: (recording) =>
-    set((s) => (s.phase === "recordingA" ? { phase: "done", originalRecording: recording } : {})),
+    set((s) =>
+      s.phase === "recordingA" ? { phase: "handoffB", originalRecording: recording } : {},
+    ),
+
+  confirmHandoffB: () => set((s) => (s.phase === "handoffB" ? { phase: "guessing" } : {})),
+
+  setNotes: (notes) => set((s) => (s.phase === "guessing" ? { notes } : {})),
+
+  setGuessRecording: (recording) =>
+    set((s) => (s.phase === "guessing" ? { guessRecording: recording } : {})),
+
+  incrementListenCount: () => set((s) => ({ listenCount: s.listenCount + 1 })),
+
+  endGuessing: () => set((s) => (s.phase === "guessing" ? { phase: "confirmEnd" } : {})),
+
+  cancelEnd: () => set((s) => (s.phase === "confirmEnd" ? { phase: "guessing" } : {})),
+
+  confirmEnd: () => set((s) => (s.phase === "confirmEnd" ? { phase: "reveal" } : {})),
 
   backToMenu: () => set({ ...INITIAL_STATE }),
 }));
