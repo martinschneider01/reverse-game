@@ -1,0 +1,38 @@
+2026-05-01 — Issue #2 (T1: Scaffold projet & toolchain)
+
+Scaffolded the project from scratch per PROJECT.md §12. All quality gates green:
+  - bun run dev → Vite up, serves "Reverso"
+  - bun run build → production bundle + PWA SW
+  - bun run typecheck → tsc --noEmit clean
+  - bun run lint → oxlint clean
+  - bun run format:check → oxfmt clean
+  - bun run test → smoke test (App renders heading) passes
+
+Tooling decisions worth flagging for the next agent:
+  - TypeScript: `bun add -d typescript@beta` resolved to 6.0.3 (the current @beta
+    tag). PROJECT.md §3.11 names "TS 7 beta" as the target; 6.0.3 is the closest
+    available now and works without compat shims, so no fallback to 5.x was
+    needed. Re-check `npm dist-tag ls typescript` periodically.
+  - Bun lockfile: bun 1.3.13 writes `bun.lock` (text) by default, not the older
+    `bun.lockb` (binary) named in PROJECT.md §9.3 / §12. I committed `bun.lock`.
+    No action needed; just a naming drift in PROJECT.md.
+  - tsconfig: removed `baseUrl` (deprecated in TS 6/7) and use a `paths` map
+    relative to the config dir for the `@/*` alias. Vite alias mirrors it via
+    `fileURLToPath`.
+  - vitest config: split into a separate `vitest.config.ts` that mergeConfig's
+    the vite config — `vite.config.ts` types in vite 8 don't accept a `test`
+    field anymore.
+  - PWA icons in `public/` are 1x1 transparent PNG placeholders. Real icons are
+    a T7 deliverable (issue #8).
+  - Vitest 4 dropped the `--related` flag in favor of a `vitest related <files>`
+    subcommand. The pre-commit hook uses the new form. PROJECT.md §9.2 still
+    names `vitest run --related` — update that note when convenient.
+
+Pre-commit hook verified by attempting a commit with a TS error: lint-staged
+ran oxlint+oxfmt --check on staged files, then `tsc --noEmit` blocked the
+commit with the expected TS2322 error. No `--no-verify` used.
+
+Directory layout matches PROJECT.md §6 (audio/, audio/wrappers/, components/,
+phases/, store/ — currently with `.gitkeep` placeholders, ready for T2+).
+
+Next up: issue #3 (T2 — démo audio: enregistrement + lecture forward).

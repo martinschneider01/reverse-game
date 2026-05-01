@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+
+set -e
+
+bunx lint-staged
+bun run typecheck
+
+STAGED_TS=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|tsx)$' || true)
+if [ -n "$STAGED_TS" ]; then
+  bunx vitest related $STAGED_TS
+fi
