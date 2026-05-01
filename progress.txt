@@ -765,3 +765,94 @@ prop), #12 (pré-écoute du message A, medium scope), #9 (Tailwind setup,
 blocks #10 and #11). #16 is the cheapest next step; #9 unlocks the visual
 polish track.
 
+
+2026-05-01 — Issue #12 (Pré-écoute du message A avant handoff B)
+
+Closed the MVP gap where joueur A had no way to verify their take before
+passing the phone — a real UX problem that blocked PRD user stories #7 and
+#8. Now after stop, RecordingAPhase renders a preview panel with an
+AudioPlayer (forward/reverse toggle + speed slider inherited from the
+component) and two CTAs: "Refaire" (drop the take, return to recorder) and
+"Passer à B" (commit the take, transition to handoffB). Picked the panel-
+in-RecordingAPhase route over a new `previewA` phase per the AC's
+recommendation — strictly simpler, no state-machine churn.
+
+All gates green: 120 tests across 19 files (was 118), typecheck clean,
+oxlint clean, oxfmt --check clean, vite build OK (15 precache entries /
+207.78 KiB).
+
+Modules touched:
+  - src/phases/RecordingAPhase.tsx — added local `preview: Recording | null`
+    state via useState. Branch on it: null → render AudioRecorder
+    (onRecorded now sets `preview` instead of dispatching to the store);
+    non-null → render preview panel (heading "Pré-écoute", AudioPlayer
+    with the recording, "Refaire" button → setPreview(null), "Passer à B"
+    button → finishRecordingA(preview)). New optional `playerFactory`
+    prop wired through to the AudioPlayer for jsdom test injection,
+    same convention as GuessingPhase / RevealPhase.
+  - src/phases/RecordingAPhase.test.tsx — rewritten. 3 tests now (was 1):
+    (a) after stop the preview panel renders + store is NOT yet
+    transitioned (originalRecording still null, phase still recordingA);
+    (b) "Passer à B" transitions to handoffB with the recorded buffer
+    (the original happy-path assertion, just gated on the new button);
+    (c) "Refaire" returns to the recorder without touching the store.
+    `usePlaybackStore` reset added to beforeEach since the preview
+    AudioPlayer registers via `useId`.
+
+Design notes worth flagging for the next agent:
+
+  - **State machine unchanged**. No new phase, no new action. The store
+    still walks recordingA → handoffB on `finishRecordingA`. The preview
+    is purely component-local. This was a deliberate choice: a new
+    `previewA` phase would have meant a `discardPreview` action,
+    `confirmPreview` action, and another card in App.tsx — for zero
+    additional power. The local-state approach trivially satisfies the
+    AC ("la state machine reste cohérente — pas de saut d'étape").
+  - **`preview` lives in RecordingAPhase, not the gameStore**. Reason:
+    until the user clicks "Passer à B", the recording is provisional and
+    nothing else in the app needs to read it. Putting it in the store
+    would force a `discardPreview` transition on backToMenu / refresh
+    edge cases, and would conflict with the pre-existing convention
+    that `originalRecording` is non-null only from handoffB onwards.
+    If a future requirement (e.g. let A re-listen during HandoffA, or
+    persist across remounts) emerges, hoist it then.
+  - **AudioPlayer reuses the App-level lazy AudioContext** via
+    `audioContextFactory()`. Same call once per render of the preview
+    branch — App.tsx memoizes via ref so no second context is created.
+    AudioPlayer caches its Player on first mount (the `playerRef.current
+    === null` gate), so subsequent renders are inert. Same pattern as
+    GuessingPhase.
+  - **No "discard on unmount" cleanup needed**. If the user navigates
+    away (via menu / hard reset), `backToMenu` wipes INITIAL_STATE and
+    the unmount drops the local `preview` state with it. AudioBuffers
+    are GC'd by the JS heap once both refs are gone.
+  - **The "Refaire" button is intentionally not destructive-confirmed**.
+    The take is only seconds old and trivially re-recorded; a confirm
+    dialog would be friction. If a user complains they lost a good take
+    by misclick, revisit.
+  - **Speed slider shows on the preview player**. Slightly debatable —
+    A only needs a quick yes/no on whether the take captured well, so
+    the slider adds noise. Left it on for now because (a) the
+    `showRateControl` prop from issue #14 doesn't exist yet, (b) the
+    direction toggle is the genuinely useful control here (does it
+    sound right reversed? is the inversion intelligible?), (c) the
+    slider is low-cost visually. If #14 lands later, set
+    `showRateControl={false}` here too.
+  - **App.tsx didn't need touching**. RecordingAPhase already received
+    `audioContextFactory` from App; the new `playerFactory` prop
+    defaults to `createPlayer` so production wiring works without a
+    threaded prop.
+  - **No new dependencies**.
+  - **Coverage tool still not wired**. RecordingAPhase logic is simple
+    enough that the 3 tests cover all branches by inspection (preview
+    null → recorder; preview set → panel; refaire → null; continuer →
+    store dispatch).
+
+Next up: the cheapest remaining gameplay-quality items are #16
+(RevealPhase voix B defaults to reverse — one prop change in RevealPhase,
+one assertion in its test) and #14 (compact AudioPlayer mode — adds
+`showRateControl?: boolean` prop, callable from GuessingPhase's "Ta voix"
+player AND from the new preview panel above). After those, the visual
+polish track unlocks via #9 (Tailwind setup), which then enables #10
+(Menu redesign) and #11 (rest-of-phases polish).
+

@@ -1,5 +1,9 @@
+import { useState } from "react";
+import { AudioPlayer } from "@/components/AudioPlayer";
 import { AudioRecorder } from "@/components/AudioRecorder";
 import type { Recorder, RecorderOptions } from "@/audio/wrappers/recorder";
+import type { Player } from "@/audio/wrappers/player";
+import type { Recording } from "@/audio/recording";
 import { useGameStore } from "@/store/gameStore";
 
 const MAX_DURATION_MS = 15000;
@@ -7,6 +11,7 @@ const MAX_DURATION_MS = 15000;
 export type RecordingAPhaseProps = {
   audioContextFactory: () => AudioContext;
   recorderFactory?: (options: RecorderOptions) => Recorder;
+  playerFactory?: (ctx: AudioContext) => Player;
   decode?: (blob: Blob, ctx: AudioContext) => Promise<AudioBuffer>;
   reverse?: (buffer: AudioBuffer, ctx: AudioContext) => AudioBuffer;
 };
@@ -14,23 +19,45 @@ export type RecordingAPhaseProps = {
 export function RecordingAPhase({
   audioContextFactory,
   recorderFactory,
+  playerFactory,
   decode,
   reverse,
 }: RecordingAPhaseProps) {
   const finishRecordingA = useGameStore((s) => s.finishRecordingA);
+  const [preview, setPreview] = useState<Recording | null>(null);
+
+  if (preview === null) {
+    return (
+      <section>
+        <h2>Enregistrement</h2>
+        <p>Prononce une phrase courte (max 15 s).</p>
+        <AudioRecorder
+          maxDurationMs={MAX_DURATION_MS}
+          onRecorded={setPreview}
+          audioContextFactory={audioContextFactory}
+          recorderFactory={recorderFactory}
+          decode={decode}
+          reverse={reverse}
+        />
+      </section>
+    );
+  }
 
   return (
     <section>
-      <h2>Enregistrement</h2>
-      <p>Prononce une phrase courte (max 15 s).</p>
-      <AudioRecorder
-        maxDurationMs={MAX_DURATION_MS}
-        onRecorded={finishRecordingA}
-        audioContextFactory={audioContextFactory}
-        recorderFactory={recorderFactory}
-        decode={decode}
-        reverse={reverse}
+      <h2>Pré-écoute</h2>
+      <p>Vérifie ta prise avant de passer le téléphone à B.</p>
+      <AudioPlayer
+        recording={preview}
+        audioContext={audioContextFactory()}
+        playerFactory={playerFactory}
       />
+      <button type="button" onClick={() => setPreview(null)}>
+        Refaire
+      </button>
+      <button type="button" onClick={() => finishRecordingA(preview)}>
+        Passer à B
+      </button>
     </section>
   );
 }
