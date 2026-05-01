@@ -117,6 +117,13 @@ Chaque décision est suivie d'un `Why:` court. Si tu envisages d'aller à l'inve
 ### 3.10 PWA
 
 - **Niveau standard** : manifest + service worker précachant les assets statiques (via `vite-plugin-pwa` + Workbox). App fonctionne offline une fois chargée. Service worker désactivé en mode dev.
+- **Stratégie de cache** :
+  - **Précache** (au build) : tous les `*.{js,css,html,png,svg,webmanifest}` du bundle, déclaré via `workbox.globPatterns` dans `vite.config.ts`. Couvre le bundle JS/CSS, `index.html`, le manifest, et les icônes (192/512 + maskable, plus `apple-touch-icon` et `favicon-32`).
+  - **Navigation fallback** : `navigateFallback: 'index.html'` pour servir l'app shell quand l'URL demandée n'est pas précachée (SPA-style).
+  - **Pas de runtime caching** : aucune ressource externe (pas de CDN, pas d'API). Tout est local au bundle, le précache suffit.
+  - **Mise à jour** : `registerType: 'autoUpdate'` — un nouveau SW prend le contrôle au prochain chargement après déploiement, sans prompt utilisateur.
+  - **Dev mode** : `devOptions.enabled: false` — pas de SW pendant `bun run dev` pour éviter de masquer les changements de code.
+- **Manifest** : `name`, `short_name`, `description`, `lang: fr`, `start_url: .`, `scope: .`, `theme_color`, `background_color`, `display: standalone`, `orientation: portrait`. Icônes en deux variantes `purpose` : `any` (standard) et `maskable` (pour Android adaptive icons).
 
 ### 3.11 TypeScript 7 beta
 
@@ -425,6 +432,57 @@ Si un échoue, le commit est bloqué. **Never bypass with `--no-verify`** — co
 22. Icônes PWA (peuvent être des placeholders).
 23. Test manuel d'un round complet sur un vrai téléphone (Safari iOS + Chrome Android).
 24. Vérifier que `bun run build` produit un bundle qui passe Lighthouse PWA.
+
+---
+
+## 14. HITL — Test device réel (T7)
+
+Cette checklist requiert **un humain avec un iPhone et un Android physiques**. Elle ne peut pas être automatisée. Cocher manuellement et joindre captures d'écran à la PR T7.
+
+### Préparation
+
+- [ ] Builder en local : `bun run build`
+- [ ] Servir le bundle via HTTPS (le SW PWA exige HTTPS sauf sur `localhost`). Options :
+  - `bun run preview` + reverse-proxy ngrok / Cloudflare Tunnel
+  - Déployer sur un host statique (Vercel / Netlify / GitHub Pages)
+- [ ] Ouvrir l'URL HTTPS depuis le téléphone physique
+
+### iOS Safari (iPhone réel)
+
+- [ ] Premier chargement OK, l'app affiche le menu
+- [ ] "Ajouter à l'écran d'accueil" via le menu de partage Safari
+- [ ] L'icône installée correspond à l'`apple-touch-icon` (180×180)
+- [ ] Lancement depuis l'écran d'accueil → mode standalone (pas de barre Safari)
+- [ ] Permission micro demandée au "Démarrer une partie", accordable
+- [ ] Round complet jouable : Menu → HandoffA → RecordingA → HandoffB → Guessing → ConfirmEnd → Reveal
+- [ ] Audio inversé audible et fidèle
+- [ ] Mode avion : recharger l'app depuis l'écran d'accueil → toujours fonctionnelle
+- [ ] Mode portrait imposé OK (rotation paysage soit rejetée, soit gracieusement acceptée)
+
+### Android Chrome (téléphone réel)
+
+- [ ] Premier chargement OK, l'app affiche le menu
+- [ ] Bandeau "Ajouter à l'écran d'accueil" proposé OU installable via le menu Chrome
+- [ ] L'icône installée utilise la variante maskable (forme adaptative selon le launcher)
+- [ ] Lancement depuis l'écran d'accueil → mode standalone (pas d'UI Chrome)
+- [ ] Permission micro demandée au "Démarrer une partie", accordable
+- [ ] Round complet jouable de bout en bout
+- [ ] Audio inversé audible et fidèle
+- [ ] Mode avion : recharger l'app depuis l'icône → toujours fonctionnelle
+
+### Lighthouse PWA audit
+
+- [ ] `bunx lighthouse <url-https> --view --preset=desktop` (ou via DevTools)
+- [ ] Score Installable : OK
+- [ ] Score PWA Optimized : OK (ou écarts documentés ici)
+- [ ] Tout critère failing est soit corrigé, soit listé ci-dessous comme limitation acceptée :
+  - _(à remplir lors du test HITL)_
+
+### Bugs mobile-specific
+
+Si découverts pendant le HITL :
+- soit corrigés dans la slice T7,
+- soit déposés en issue séparée avec label `bug` et référencés ici.
 
 ---
 
