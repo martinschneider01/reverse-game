@@ -1568,3 +1568,143 @@ Notes for next agent
    - There's a vestigial `currentTime = 0` field on FakeAudioContext in
      player.test.ts that nothing reads — left it alone; could be cleaned
      up if someone is in there anyway.
+
+
+2026-05-02 — Issue #17 (Refonte Players/Recorders : waveform, contrôles, suppression des hand-offs)
+
+Big UX refactor. All AC met; 143/143 tests pass; typecheck, lint,
+format:check, build all clean.
+
+State machine (src/store/gameStore.ts)
+   - Removed `handoffA` and `handoffB` from the Phase union.
+   - permissionGranted: permission → recordingA (was handoffA)
+   - finishRecordingA: recordingA → guessing (was handoffB)
+   - newRound: reveal → recordingA (was handoffA)
+   - Removed confirmHandoffA / confirmHandoffB actions.
+   - setGuessRecording now accepts Recording | null so the new
+     close-X on the guess preview can clear it. Same phase guard
+     (no-op outside guessing).
+
+Deleted
+   - src/phases/HandoffAPhase.tsx + .test.tsx
+   - src/phases/HandoffBPhase.tsx + .test.tsx
+
+App.tsx
+   - Dropped the two handoff branches; phase enum now drives directly
+     to RecordingAPhase / GuessingPhase.
+
+AudioPlayer (src/components/AudioPlayer.tsx) — full rewrite of the UI:
+   1) Two distinct play buttons:
+      - Forward: aria-label "Lecture à l'endroit", PlayIcon
+      - Reverse: aria-label "Lecture à l'envers", mirrored PlayIcon
+      - When that direction is currently playing, the icon switches to
+        Pause and aria-label becomes just "Pause" (so /^pause$/i is
+        unambiguous in tests).
+      - lockDirection no longer hides the disallowed button — it
+        renders disabled instead (CSS .audio-player-direction-btn:
+        disabled gives the grey/.5 opacity). Used in GuessingPhase to
+        show a greyed-out "à l'endroit" alongside the active reverse
+        button.
+   2) Waveform bar visualization:
+      - 32 vertical bars computed from RMS of recording.forward
+        (computeBars). Defensive: if buffer.getChannelData isn't a
+        function (test fakes), returns a flat zero-array.
+      - Each bar height = max(8%, normalized RMS * 100%).
+   3) Animated playhead:
+      - Tracked via requestAnimationFrame + performance.now().
+      - On play: setPositionFrac(0), playStartRef = performance.now().
+      - Each frame: positionFrac = min((wallElapsed * rate) /
+        durationMs, 1). Stops at 1 or when paused/ended.
+      - Renders <span data-testid="playhead" data-position={frac}
+        style={{ left: `${frac * 100}%` }}>; for reverse direction
+        the rendered fraction is (1 - positionFrac), so the head
+        moves right→left.
+      - Note: rate changes mid-playback give a slightly mistimed
+        playhead because we don't snapshot accumulated audio time on
+        rate change. Acceptable visual approximation; spec doesn't
+        require sample-accurate sync.
+   4) Speed slider hidden behind a gear:
+      - Gear button (aria-label "Réglages vitesse") toggles internal
+        rateRevealed state. Default false.
+      - Slider only renders when `showRateControl && rateRevealed`.
+      - Range 0.25–2× and 1× snap unchanged.
+      - When `showRateControl={false}` (used by GuessingPhase guess
+        preview), no gear and no slider render at all.
+   5) onClose prop:
+      - Optional. When provided, renders a × button (aria-label
+        "Fermer") absolutely positioned top-right of the player.
+      - Used by RecordingAPhase preview (clears local preview state)
+        and GuessingPhase guess preview (clears store guessRecording
+        via setGuessRecording(null)).
+
+RecordingAPhase
+   - Title now "Enregistre ton vocal sans que personne ne t'écoute"
+     (the privacy hint that used to live on HandoffAPhase is now
+     baked into the recording screen).
+   - Removed the secondary "Refaire" button. The X on the AudioPlayer
+     replaces it (preview reset).
+
+GuessingPhase
+   - Original player keeps lockDirection="reverse" — the new
+     greyed-out forward button is now visible (vs hidden before).
+   - The "Ta voix" card now swaps recorder ↔ player based on
+     guessRecording state: shows recorder when null, player (with
+     close X) once recorded. Recording again happens by clicking X
+     to clear and then "Enregistrer" again.
+
+CSS (src/index.css)
+   - Added a component layer block for .audio-player-* selectors:
+     waveform with bars, playhead (pink with shadow glow),
+     direction-btn (with :disabled grey state), gear with
+     aria-pressed=true highlight, close X (round chip top-right).
+   - No global token changes; everything scoped to .audio-player.
+
+Tests
+   - gameStore.test.ts: rewired all transitions for the no-handoff
+     graph; new test for setGuessRecording(null).
+   - App.test.tsx: dropped the handoffA-rendered test.
+   - PermissionPhase.test.tsx: handoffA → recordingA assertion.
+   - RecordingAPhase.test.tsx: title-change, no-Refaire, X-clears,
+     "Passer à B" → guessing transition.
+   - GuessingPhase.test.tsx: forward button disabled (not absent),
+     X clears guessRecording, gear toggle reveals slider, recorder
+     swaps to player on recording.
+   - RevealPhase.test.tsx: switched from `name: /lecture/i` (now
+     ambiguous) to `name: /lecture à l'endroit|envers/i`. The
+     "default to reverse" assertion now reads setDirection calls
+     on the player factory because there's no longer a single
+     direction toggle button to assert on.
+   - AudioPlayer.test.tsx: reworked all queries to the directional
+     names, added tests for gear toggle, onClose presence/callback,
+     waveform bar count (32), and the new playhead animation block.
+     The animation block mocks performance.now and rAF/cAF so we
+     can drive frames synchronously; flushRaf wraps in act() so
+     setState propagates to DOM before assertions.
+
+Notes for next agent
+   - The two playhead animation tests rely on `vi.spyOn(globalThis,
+     "requestAnimationFrame")`. If you ever refactor AudioPlayer to
+     use a different animation primitive (Web Animation API,
+     `setTimeout`, etc.), update the mock accordingly.
+   - GuessingPhase intentionally renders recorder OR player (not
+     both). If a future spec wants a "record again" button while
+     keeping the previous take audible until the new one finishes,
+     swap that conditional for a side-by-side layout.
+   - The `data-position` attribute on the playhead is a test seam
+     and could be removed if a future test infrastructure becomes
+     more robust to rAF timing. Keep it for now.
+   - PROJECT.md still describes the handoffA/handoffB phases in §3
+     and §5. I did NOT update PROJECT.md in this PR because the
+     issue scope is implementation-only; the project owner should
+     decide whether to amend §3 (state machine), §5 (round flow),
+     and §12 (implementation order) to reflect the shorter graph.
+   - Visual quality: the bars + playhead look decent in the build
+     but I haven't validated on a real phone. The pink glow on the
+     playhead may bleed into adjacent surface-elevated; HITL.
+
+Verification
+   - bun run typecheck — clean
+   - bun run lint — 0/0
+   - bun run format:check — all good
+   - bun run test — 143/143
+   - bun run build — passes (PWA precache 230.26 KiB)

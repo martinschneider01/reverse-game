@@ -16,14 +16,14 @@ function makeFakeStream(): { stream: MediaStream; trackStop: ReturnType<typeof v
 }
 
 describe("<PermissionPhase />", () => {
-  it("transitions to handoffA when getUserMedia resolves", async () => {
+  it("transitions to recordingA when getUserMedia resolves", async () => {
     const { stream, trackStop } = makeFakeStream();
     const requestPermission = vi.fn(async () => stream);
 
     render(<PermissionPhase requestPermission={requestPermission} />);
 
     await waitFor(() => {
-      expect(useGameStore.getState().phase).toBe("handoffA");
+      expect(useGameStore.getState().phase).toBe("recordingA");
     });
     expect(requestPermission).toHaveBeenCalled();
     expect(trackStop).toHaveBeenCalled();

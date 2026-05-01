@@ -52,14 +52,17 @@ beforeEach(() => {
 const audioContextFactory = (): AudioContext => ({}) as AudioContext;
 
 describe("<GuessingPhase />", () => {
-  it("renders the original player locked in reverse direction with no direction toggle", () => {
+  it("renders the original player locked in reverse with the forward button visible but disabled", () => {
     const player = makeFakePlayer();
     render(
       <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={() => player} />,
     );
     expect(player.setDirection).toHaveBeenCalledWith("reverse");
     expect(player.load).toHaveBeenCalledWith(fakeOriginal);
-    expect(screen.queryByRole("button", { name: /sens/i })).not.toBeInTheDocument();
+    const forwardBtn = screen.getByRole("button", { name: /lecture à l'endroit/i });
+    expect(forwardBtn).toBeDisabled();
+    const reverseBtn = screen.getByRole("button", { name: /lecture à l'envers/i });
+    expect(reverseBtn).not.toBeDisabled();
   });
 
   it("clicking 'Fin' transitions to confirmEnd", async () => {
@@ -86,12 +89,12 @@ describe("<GuessingPhase />", () => {
       <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
     );
     expect(screen.getByLabelText(/compteur d'écoutes/i)).toHaveTextContent("Écoutes : 0");
-    await user.click(screen.getAllByRole("button", { name: /lecture/i })[0]!);
+    await user.click(screen.getByRole("button", { name: /lecture à l'envers/i }));
     expect(useGameStore.getState().listenCount).toBe(1);
     expect(screen.getByLabelText(/compteur d'écoutes/i)).toHaveTextContent("Écoutes : 1");
   });
 
-  it("recording overwrites the guess recording in the store and reveals a player for it", async () => {
+  it("recording overwrites the guess recording in the store and replaces the recorder with a player", async () => {
     const user = userEvent.setup();
     const blob = new Blob([new Uint8Array([1])], { type: "audio/webm" });
     const recorder = makeFakeRecorder(blob);
@@ -114,11 +117,12 @@ describe("<GuessingPhase />", () => {
       expect(useGameStore.getState().guessRecording).not.toBeNull();
     });
 
-    await screen.findAllByRole("button", { name: /lecture/i });
-    expect(screen.getAllByRole("button", { name: /lecture/i }).length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByRole("button", { name: /enregistrer/i })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /lecture à l'endroit/i }).length).toBe(2);
   });
 
-  it("the 'Ta voix' replay player does not expose the speed slider while the original does", async () => {
+  it("clicking the × on the guess preview clears guessRecording and shows the recorder again", async () => {
+    const user = userEvent.setup();
     useGameStore.setState({
       ...INITIAL_STATE,
       phase: "guessing",
@@ -130,7 +134,32 @@ describe("<GuessingPhase />", () => {
       <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
     );
 
-    const sliders = screen.getAllByRole("slider", { name: /vitesse/i });
-    expect(sliders).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /fermer/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /fermer/i }));
+
+    expect(useGameStore.getState().guessRecording).toBeNull();
+    expect(await screen.findByRole("button", { name: /enregistrer/i })).toBeInTheDocument();
+  });
+
+  it("the 'Ta voix' replay player does not expose the gear (and slider) while the original does", async () => {
+    const user = userEvent.setup();
+    useGameStore.setState({
+      ...INITIAL_STATE,
+      phase: "guessing",
+      originalRecording: fakeOriginal,
+      guessRecording: fakeGuess,
+    });
+
+    render(
+      <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+
+    expect(screen.queryByRole("slider", { name: /vitesse/i })).not.toBeInTheDocument();
+
+    const gears = screen.getAllByRole("button", { name: /réglages vitesse/i });
+    expect(gears).toHaveLength(1);
+
+    await user.click(gears[0]!);
+    expect(screen.getAllByRole("slider", { name: /vitesse/i })).toHaveLength(1);
   });
 });

@@ -50,18 +50,29 @@ describe("<RevealPhase />", () => {
     render(
       <RevealPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
     );
-    expect(screen.getAllByRole("button", { name: /lecture/i })).toHaveLength(2);
+    // Each AudioPlayer renders both a forward and a reverse button.
+    expect(screen.getAllByRole("button", { name: /lecture à l'endroit/i })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: /lecture à l'envers/i })).toHaveLength(2);
     expect(screen.getByLabelText(/notes/i)).toHaveTextContent("ma note");
   });
 
-  it("defaults the 'Voix du joueur B' player to reverse direction (original stays forward)", () => {
+  it("primes the 'Voix du joueur B' player in reverse via initialDirection", () => {
+    const players: Player[] = [];
     render(
-      <RevealPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+      <RevealPhase
+        audioContextFactory={audioContextFactory}
+        playerFactory={() => {
+          const p = makeFakePlayer();
+          players.push(p);
+          return p;
+        }}
+      />,
     );
-    const directionButtons = screen.getAllByRole("button", { name: /sens/i });
-    expect(directionButtons).toHaveLength(2);
-    expect(directionButtons[0]).toHaveTextContent(/à l'endroit/i);
-    expect(directionButtons[1]).toHaveTextContent(/à l'envers/i);
+    expect(players).toHaveLength(2);
+    // Original: no setDirection call (initialDirection defaults to forward).
+    expect(players[0]!.setDirection).not.toHaveBeenCalled();
+    // Guess: setDirection("reverse") called once on mount.
+    expect(players[1]!.setDirection).toHaveBeenCalledWith("reverse");
   });
 
   it("renders only the original player when guessRecording is null", () => {
@@ -74,18 +85,18 @@ describe("<RevealPhase />", () => {
     render(
       <RevealPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
     );
-    expect(screen.getAllByRole("button", { name: /lecture/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /lecture à l'endroit/i })).toHaveLength(1);
     expect(screen.getByText(/aucune note prise/i)).toBeInTheDocument();
   });
 
-  it("clicking 'Nouvelle partie' resets per-round slices and transitions to handoffA", async () => {
+  it("clicking 'Nouvelle partie' resets per-round slices and transitions to recordingA", async () => {
     const user = userEvent.setup();
     render(
       <RevealPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
     );
     await user.click(screen.getByRole("button", { name: /nouvelle partie/i }));
     const s = useGameStore.getState();
-    expect(s.phase).toBe("handoffA");
+    expect(s.phase).toBe("recordingA");
     expect(s.originalRecording).toBeNull();
     expect(s.guessRecording).toBeNull();
     expect(s.notes).toBe("");
@@ -112,6 +123,6 @@ describe("<RevealPhase />", () => {
       <RevealPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
     );
     expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /lecture/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /lecture à l'endroit/i })).not.toBeInTheDocument();
   });
 });

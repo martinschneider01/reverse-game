@@ -66,20 +66,22 @@ export function GuessingPhase({
 
       <div className="card">
         <h3>Ta voix</h3>
-        <AudioRecorder
-          maxDurationMs={MAX_DURATION_MS}
-          onRecorded={setGuessRecording}
-          audioContextFactory={audioContextFactory}
-          recorderFactory={recorderFactory}
-          decode={decode}
-          reverse={reverse}
-        />
-        {guessRecording !== null && (
+        {guessRecording === null ? (
+          <AudioRecorder
+            maxDurationMs={MAX_DURATION_MS}
+            onRecorded={setGuessRecording}
+            audioContextFactory={audioContextFactory}
+            recorderFactory={recorderFactory}
+            decode={decode}
+            reverse={reverse}
+          />
+        ) : (
           <AudioPlayer
             recording={guessRecording}
             audioContext={ctx}
             showRateControl={false}
             playerFactory={playerFactory}
+            onClose={() => setGuessRecording(null)}
           />
         )}
       </div>

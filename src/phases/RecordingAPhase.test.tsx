@@ -69,21 +69,29 @@ async function recordOnce(user: ReturnType<typeof userEvent.setup>): Promise<voi
 }
 
 describe("<RecordingAPhase />", () => {
-  it("shows the preview panel after stop instead of immediately transitioning", async () => {
+  it("renders the new explicit privacy title before recording", () => {
+    renderPhase();
+    expect(
+      screen.getByRole("heading", { name: /enregistre ton vocal sans que personne ne t'écoute/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the preview panel with no Refaire button after stop (X on the player resets instead)", async () => {
     const user = userEvent.setup();
     renderPhase();
 
     await recordOnce(user);
 
     expect(await screen.findByRole("heading", { name: /pré-écoute/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /lecture/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /refaire/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /lecture à l'endroit/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^refaire$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /fermer/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /passer à b/i })).toBeInTheDocument();
     expect(useGameStore.getState().phase).toBe("recordingA");
     expect(useGameStore.getState().originalRecording).toBeNull();
   });
 
-  it("clicking 'Passer à B' transitions to handoffB with the recorded buffer", async () => {
+  it("clicking 'Passer à B' transitions to guessing with the recorded buffer", async () => {
     const user = userEvent.setup();
     renderPhase();
 
@@ -91,7 +99,7 @@ describe("<RecordingAPhase />", () => {
     await user.click(await screen.findByRole("button", { name: /passer à b/i }));
 
     const s = useGameStore.getState();
-    expect(s.phase).toBe("handoffB");
+    expect(s.phase).toBe("guessing");
     expect(s.originalRecording).toEqual({
       forward: fakeForward,
       reverse: fakeReversed,
@@ -99,14 +107,14 @@ describe("<RecordingAPhase />", () => {
     });
   });
 
-  it("clicking 'Refaire' returns to the recorder without transitioning the store", async () => {
+  it("clicking the close × on the preview player returns to the recorder without transitioning the store", async () => {
     const user = userEvent.setup();
     renderPhase();
 
     await recordOnce(user);
-    expect(await screen.findByRole("button", { name: /refaire/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /fermer/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /refaire/i }));
+    await user.click(screen.getByRole("button", { name: /fermer/i }));
 
     expect(await screen.findByRole("button", { name: /enregistrer/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /passer à b/i })).not.toBeInTheDocument();

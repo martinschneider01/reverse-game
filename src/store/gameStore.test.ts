@@ -39,17 +39,17 @@ describe("gameStore", () => {
     });
 
     it("is a no-op when phase is not menu", () => {
-      useGameStore.setState({ phase: "handoffA" });
+      useGameStore.setState({ phase: "recordingA" });
       useGameStore.getState().startGame();
-      expect(useGameStore.getState().phase).toBe("handoffA");
+      expect(useGameStore.getState().phase).toBe("recordingA");
     });
   });
 
   describe("permissionGranted", () => {
-    it("transitions permission → handoffA", () => {
+    it("transitions permission → recordingA", () => {
       useGameStore.setState({ phase: "permission" });
       useGameStore.getState().permissionGranted();
-      expect(useGameStore.getState().phase).toBe("handoffA");
+      expect(useGameStore.getState().phase).toBe("recordingA");
     });
 
     it("is a no-op when phase is not permission", () => {
@@ -87,26 +87,12 @@ describe("gameStore", () => {
     });
   });
 
-  describe("confirmHandoffA", () => {
-    it("transitions handoffA → recordingA", () => {
-      useGameStore.setState({ phase: "handoffA" });
-      useGameStore.getState().confirmHandoffA();
-      expect(useGameStore.getState().phase).toBe("recordingA");
-    });
-
-    it("is a no-op when phase is not handoffA", () => {
-      useGameStore.setState({ phase: "menu" });
-      useGameStore.getState().confirmHandoffA();
-      expect(useGameStore.getState().phase).toBe("menu");
-    });
-  });
-
   describe("finishRecordingA", () => {
-    it("stores the recording and transitions recordingA → handoffB", () => {
+    it("stores the recording and transitions recordingA → guessing", () => {
       useGameStore.setState({ phase: "recordingA" });
       useGameStore.getState().finishRecordingA(fakeRecording);
       const s = useGameStore.getState();
-      expect(s.phase).toBe("handoffB");
+      expect(s.phase).toBe("guessing");
       expect(s.originalRecording).toBe(fakeRecording);
     });
 
@@ -116,20 +102,6 @@ describe("gameStore", () => {
       const s = useGameStore.getState();
       expect(s.phase).toBe("menu");
       expect(s.originalRecording).toBeNull();
-    });
-  });
-
-  describe("confirmHandoffB", () => {
-    it("transitions handoffB → guessing", () => {
-      useGameStore.setState({ phase: "handoffB" });
-      useGameStore.getState().confirmHandoffB();
-      expect(useGameStore.getState().phase).toBe("guessing");
-    });
-
-    it("is a no-op when phase is not handoffB", () => {
-      useGameStore.setState({ phase: "menu" });
-      useGameStore.getState().confirmHandoffB();
-      expect(useGameStore.getState().phase).toBe("menu");
     });
   });
 
@@ -160,8 +132,14 @@ describe("gameStore", () => {
       expect(useGameStore.getState().guessRecording).toBe(otherRecording);
     });
 
+    it("clears the guess recording when called with null", () => {
+      useGameStore.setState({ phase: "guessing", guessRecording: fakeRecording });
+      useGameStore.getState().setGuessRecording(null);
+      expect(useGameStore.getState().guessRecording).toBeNull();
+    });
+
     it("is a no-op outside the guessing phase", () => {
-      useGameStore.setState({ phase: "handoffB", guessRecording: null });
+      useGameStore.setState({ phase: "recordingA", guessRecording: null });
       useGameStore.getState().setGuessRecording(fakeRecording);
       expect(useGameStore.getState().guessRecording).toBeNull();
     });
@@ -227,7 +205,7 @@ describe("gameStore", () => {
   });
 
   describe("newRound", () => {
-    it("transitions reveal → handoffA and resets per-round slices", () => {
+    it("transitions reveal → recordingA and resets per-round slices", () => {
       useGameStore.setState({
         phase: "reveal",
         originalRecording: fakeRecording,
@@ -237,7 +215,7 @@ describe("gameStore", () => {
       });
       useGameStore.getState().newRound();
       const s = useGameStore.getState();
-      expect(s.phase).toBe("handoffA");
+      expect(s.phase).toBe("recordingA");
       expect(s.originalRecording).toBeNull();
       expect(s.guessRecording).toBeNull();
       expect(s.notes).toBe("");
@@ -288,17 +266,13 @@ describe("gameStore", () => {
   });
 
   describe("end-to-end happy path", () => {
-    it("walks menu → … → reveal", () => {
+    it("walks menu → … → reveal without hand-off phases", () => {
       const store = useGameStore.getState();
       store.startGame();
       expect(useGameStore.getState().phase).toBe("permission");
       useGameStore.getState().permissionGranted();
-      expect(useGameStore.getState().phase).toBe("handoffA");
-      useGameStore.getState().confirmHandoffA();
       expect(useGameStore.getState().phase).toBe("recordingA");
       useGameStore.getState().finishRecordingA(fakeRecording);
-      expect(useGameStore.getState().phase).toBe("handoffB");
-      useGameStore.getState().confirmHandoffB();
       expect(useGameStore.getState().phase).toBe("guessing");
       useGameStore.getState().setNotes("hypothèse");
       useGameStore.getState().setGuessRecording(otherRecording);

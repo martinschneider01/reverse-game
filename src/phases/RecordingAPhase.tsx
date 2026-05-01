@@ -30,7 +30,7 @@ export function RecordingAPhase({
     return (
       <section>
         <p className="kicker">Joueur A</p>
-        <h2>Enregistrement</h2>
+        <h2>Enregistre ton vocal sans que personne ne t'écoute</h2>
         <p>Prononce une phrase courte (15 s max).</p>
         <div className="card">
           <AudioRecorder
@@ -56,13 +56,11 @@ export function RecordingAPhase({
           recording={preview}
           audioContext={audioContextFactory()}
           playerFactory={playerFactory}
+          onClose={() => setPreview(null)}
         />
       </div>
       <button type="button" onClick={() => finishRecordingA(preview)}>
         Passer à B
-      </button>
-      <button type="button" className="btn-secondary" onClick={() => setPreview(null)}>
-        Refaire
       </button>
     </section>
   );

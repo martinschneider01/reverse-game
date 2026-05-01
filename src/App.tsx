@@ -4,9 +4,7 @@ import { installIosAudioUnlock } from "@/audio/iosAudioUnlock";
 import { MenuPhase } from "@/phases/MenuPhase";
 import { PermissionPhase } from "@/phases/PermissionPhase";
 import { PermissionDeniedPhase } from "@/phases/PermissionDeniedPhase";
-import { HandoffAPhase } from "@/phases/HandoffAPhase";
 import { RecordingAPhase } from "@/phases/RecordingAPhase";
-import { HandoffBPhase } from "@/phases/HandoffBPhase";
 import { GuessingPhase } from "@/phases/GuessingPhase";
 import { ConfirmEndPhase } from "@/phases/ConfirmEndPhase";
 import { RevealPhase } from "@/phases/RevealPhase";
@@ -29,9 +27,7 @@ export function App() {
       {phase === "menu" && <MenuPhase />}
       {phase === "permission" && <PermissionPhase />}
       {phase === "permissionDenied" && <PermissionDeniedPhase />}
-      {phase === "handoffA" && <HandoffAPhase />}
       {phase === "recordingA" && <RecordingAPhase audioContextFactory={getAudioContext} />}
-      {phase === "handoffB" && <HandoffBPhase />}
       {phase === "guessing" && <GuessingPhase audioContextFactory={getAudioContext} />}
       {phase === "confirmEnd" && <ConfirmEndPhase />}
       {phase === "reveal" && <RevealPhase audioContextFactory={getAudioContext} />}

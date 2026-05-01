@@ -5,9 +5,7 @@ export type Phase =
   | "menu"
   | "permission"
   | "permissionDenied"
-  | "handoffA"
   | "recordingA"
-  | "handoffB"
   | "guessing"
   | "confirmEnd"
   | "reveal";
@@ -23,11 +21,9 @@ export type GameState = {
   permissionGranted: () => void;
   permissionDenied: () => void;
   retryPermission: () => void;
-  confirmHandoffA: () => void;
   finishRecordingA: (recording: Recording) => void;
-  confirmHandoffB: () => void;
   setNotes: (notes: string) => void;
-  setGuessRecording: (recording: Recording) => void;
+  setGuessRecording: (recording: Recording | null) => void;
   incrementListenCount: () => void;
   endGuessing: () => void;
   cancelEnd: () => void;
@@ -41,9 +37,7 @@ type ActionKey =
   | "permissionGranted"
   | "permissionDenied"
   | "retryPermission"
-  | "confirmHandoffA"
   | "finishRecordingA"
-  | "confirmHandoffB"
   | "setNotes"
   | "setGuessRecording"
   | "incrementListenCount"
@@ -68,7 +62,7 @@ export const useGameStore = create<GameState>((set) => ({
 
   startGame: () => set((s) => (s.phase === "menu" ? { phase: "permission" } : {})),
 
-  permissionGranted: () => set((s) => (s.phase === "permission" ? { phase: "handoffA" } : {})),
+  permissionGranted: () => set((s) => (s.phase === "permission" ? { phase: "recordingA" } : {})),
 
   permissionDenied: () =>
     set((s) => (s.phase === "permission" ? { phase: "permissionDenied" } : {})),
@@ -76,14 +70,10 @@ export const useGameStore = create<GameState>((set) => ({
   retryPermission: () =>
     set((s) => (s.phase === "permissionDenied" ? { phase: "permission" } : {})),
 
-  confirmHandoffA: () => set((s) => (s.phase === "handoffA" ? { phase: "recordingA" } : {})),
-
   finishRecordingA: (recording) =>
     set((s) =>
-      s.phase === "recordingA" ? { phase: "handoffB", originalRecording: recording } : {},
+      s.phase === "recordingA" ? { phase: "guessing", originalRecording: recording } : {},
     ),
-
-  confirmHandoffB: () => set((s) => (s.phase === "handoffB" ? { phase: "guessing" } : {})),
 
   setNotes: (notes) => set((s) => (s.phase === "guessing" ? { notes } : {})),
 
@@ -102,7 +92,7 @@ export const useGameStore = create<GameState>((set) => ({
     set((s) =>
       s.phase === "reveal"
         ? {
-            phase: "handoffA",
+            phase: "recordingA",
             originalRecording: null,
             guessRecording: null,
             notes: "",

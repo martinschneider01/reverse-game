@@ -13,12 +13,6 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: /reverso/i })).toBeInTheDocument();
   });
 
-  it("renders the HandoffA phase when the store phase is handoffA", () => {
-    useGameStore.setState({ phase: "handoffA" });
-    render(<App />);
-    expect(screen.getByRole("button", { name: /continuer/i })).toBeInTheDocument();
-  });
-
   it("renders the PermissionDenied phase when the store phase is permissionDenied", () => {
     useGameStore.setState({ phase: "permissionDenied" });
     render(<App />);
