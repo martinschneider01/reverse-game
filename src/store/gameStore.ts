@@ -32,6 +32,7 @@ export type GameState = {
   endGuessing: () => void;
   cancelEnd: () => void;
   confirmEnd: () => void;
+  newRound: () => void;
   backToMenu: () => void;
 };
 
@@ -49,6 +50,7 @@ type ActionKey =
   | "endGuessing"
   | "cancelEnd"
   | "confirmEnd"
+  | "newRound"
   | "backToMenu";
 
 type Slice = Omit<GameState, ActionKey>;
@@ -95,6 +97,19 @@ export const useGameStore = create<GameState>((set) => ({
   cancelEnd: () => set((s) => (s.phase === "confirmEnd" ? { phase: "guessing" } : {})),
 
   confirmEnd: () => set((s) => (s.phase === "confirmEnd" ? { phase: "reveal" } : {})),
+
+  newRound: () =>
+    set((s) =>
+      s.phase === "reveal"
+        ? {
+            phase: "handoffA",
+            originalRecording: null,
+            guessRecording: null,
+            notes: "",
+            listenCount: 0,
+          }
+        : {},
+    ),
 
   backToMenu: () => set({ ...INITIAL_STATE }),
 }));

@@ -31,7 +31,7 @@ export function App() {
       {phase === "handoffB" && <HandoffBPhase />}
       {phase === "guessing" && <GuessingPhase audioContextFactory={getAudioContext} />}
       {phase === "confirmEnd" && <ConfirmEndPhase />}
-      {phase === "reveal" && <RevealPhase />}
+      {phase === "reveal" && <RevealPhase audioContextFactory={getAudioContext} />}
     </main>
   );
 }

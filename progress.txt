@@ -410,3 +410,87 @@ Design notes worth flagging for the next agent:
 
 Next up: issue #7 (T6 — Phase Reveal + flow Nouvelle partie / Retour menu).
 
+2026-05-01 — Issue #7 (T6: Phase Reveal + flow Nouvelle partie / Retour menu)
+
+Closed the round loop. After this slice an entire round Menu → Reveal is jouable,
+two rounds enchaînés via "Nouvelle partie" (back into handoffA, fresh slices),
+and "Retour menu" hard-resets the store. All gates green: 108 tests across 18
+files, typecheck clean, oxlint clean, oxfmt --check clean, vite build OK
+(PWA SW generated, 6 precache entries / 198.85 KiB).
+
+Modules delivered:
+  - src/store/gameStore.ts — new `newRound` action, guarded to the `reveal`
+    phase. Resets `originalRecording`, `guessRecording`, `notes`,
+    `listenCount` and transitions to `handoffA` (skips the menu/permission
+    prelude on purpose — permission was already granted earlier in the
+    session). Added to ActionKey/Slice typing. The PRD AC explicitly named
+    only the three slice fields; I also reset `listenCount` because it's
+    per-round and would otherwise carry over visibly into Mode 1's Mode-3-
+    ready counter UI in T?+. 25 store tests now (was 23): newRound happy
+    path + invalid-state no-op.
+  - src/phases/RevealPhase.tsx — replaces the T5 placeholder. Renders:
+      • `<AudioPlayer>` for `originalRecording` (default `forward`, full
+        slider + direction toggle inherited from the component)
+      • `<AudioPlayer>` for `guessRecording`, only when non-null (B may have
+        ended the round without recording — null-safe)
+      • `<p aria-label="Notes">{notes}</p>` when notes are non-empty;
+        "Aucune note prise." italic placeholder otherwise
+      • "Nouvelle partie" → newRound, "Retour au menu" → backToMenu
+    Defensive null-guard on `originalRecording` mirrors GuessingPhase: if
+    the phase is entered via setState with no recording, render a single
+    alert + back-to-menu button (no players).
+    Accepts the same `audioContextFactory` + optional `playerFactory` as
+    GuessingPhase; both players share one ctx via the App-level lazy ref.
+  - src/phases/RevealPhase.test.tsx — rewritten. 5 tests: two players +
+    notes shown when both recordings present; only one player + "Aucune
+    note prise" placeholder when guessRecording is null; Nouvelle partie
+    → handoffA + slices reset; Retour menu → menu + full reset; defensive
+    alert when originalRecording is null.
+  - src/App.tsx — passes `getAudioContext` to RevealPhase. Same shared lazy
+    AudioContext used by RecordingAPhase / GuessingPhase / RevealPhase.
+
+Design notes worth flagging for the next agent:
+
+  - **`newRound` lands in `handoffA`, not `permission`**. Reasoning: micro
+    permission was granted earlier in this app session (at the very first
+    round). Re-prompting on every round is annoying and unnecessary;
+    `getUserMedia` will resolve silently the second time. If a user
+    manually revoked the perm, the next `getUserMedia` inside RecordingA
+    will throw and we'll surface it via the existing recorder-error path.
+    If T?+ ever wants to re-validate permission per round, jump to
+    `permission` here instead — the state machine already handles it.
+  - **`backToMenu` from RevealPhase is the same hard reset** used from
+    PermissionDeniedPhase / DonePhase-of-T4. INITIAL_STATE wipe via the
+    existing action — no new code needed in the store. The defensive
+    "no original recording" branch also exposes a back-to-menu button so
+    a stuck user always has an exit.
+  - **Two AudioPlayer instances share one AudioContext**, same as
+    GuessingPhase. App.tsx's getAudioContext is memoized via a ref; the
+    RevealPhase calls it once at the top and passes the same ctx to both
+    players. Don't create two contexts here — most browsers cap them.
+  - **Notes are rendered as a single `<p>`**, not a `<pre>` or rich text.
+    NotesEditor accepts multi-line input via textarea, but on reveal we
+    don't preserve newlines visually. If users complain, switch to
+    `white-space: pre-wrap` styling or a `<pre>` element here. Not in T6
+    AC and not worth the polish budget yet.
+  - **Direction toggle on the original player defaults to `forward`** in
+    RevealPhase (was `reverse` in GuessingPhase). Player B has just heard
+    the reversed version exhaustively; the moment of revelation is
+    hearing the forward original. The toggle button is still present so
+    they can flip back to compare with what they were guessing against.
+  - **Coverage tool still not wired in**. `gameStore` is at 100% by
+    inspection (newRound has happy + invalid-state tests like every
+    other action). reverseBuffer / decodeRecording also still 100% by
+    inspection. T7 polish slice would be the moment to wire this — or
+    leave it permanently unenforced since pre-commit runs the full
+    `vitest run` anyway, not `--related`.
+  - **RevealPhase is the last functional slice for Mode 1**. T7 (issue #8)
+    is PWA polish + HITL device test only — no new state machine work,
+    no new components beyond manifest/icon assets. The only Phase union
+    left untouched in the lifecycle is now exhaustively wired, all 9
+    phases render real screens, and `done` is gone.
+  - **No new dependencies added** in this slice. Pure store + component
+    work on top of existing primitives.
+
+Next up: issue #8 (T7 — Polish PWA + test réel device, HITL).
+

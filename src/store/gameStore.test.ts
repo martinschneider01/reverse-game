@@ -226,6 +226,38 @@ describe("gameStore", () => {
     });
   });
 
+  describe("newRound", () => {
+    it("transitions reveal → handoffA and resets per-round slices", () => {
+      useGameStore.setState({
+        phase: "reveal",
+        originalRecording: fakeRecording,
+        guessRecording: otherRecording,
+        notes: "scribbles",
+        listenCount: 4,
+      });
+      useGameStore.getState().newRound();
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("handoffA");
+      expect(s.originalRecording).toBeNull();
+      expect(s.guessRecording).toBeNull();
+      expect(s.notes).toBe("");
+      expect(s.listenCount).toBe(0);
+    });
+
+    it("is a no-op outside the reveal phase", () => {
+      useGameStore.setState({
+        phase: "guessing",
+        originalRecording: fakeRecording,
+        notes: "wip",
+      });
+      useGameStore.getState().newRound();
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("guessing");
+      expect(s.originalRecording).toBe(fakeRecording);
+      expect(s.notes).toBe("wip");
+    });
+  });
+
   describe("backToMenu", () => {
     it("resets every slice from any non-menu phase", () => {
       useGameStore.setState({
