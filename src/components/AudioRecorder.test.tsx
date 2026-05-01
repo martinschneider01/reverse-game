@@ -16,18 +16,24 @@ function makeFakeRecorder(blob: Blob): {
 }
 
 describe("<AudioRecorder />", () => {
-  it("clicking Enregistrer starts the recorder, then clicking Arrêter decodes and emits the buffer", async () => {
+  it("clicking Enregistrer starts the recorder, then clicking Arrêter decodes, reverses, and emits a Recording", async () => {
     const user = userEvent.setup();
     const blob = new Blob([new Uint8Array([1])], { type: "audio/webm" });
     const { recorder, start, stop } = makeFakeRecorder(blob);
     const recorderFactory = vi.fn((_opts: RecorderOptions) => recorder);
 
-    const fakeBuffer = {
+    const forward = {
       numberOfChannels: 1,
-      length: 8,
+      length: 24000,
       sampleRate: 48000,
     } as unknown as AudioBuffer;
-    const decode = vi.fn(async () => fakeBuffer);
+    const reversed = {
+      numberOfChannels: 1,
+      length: 24000,
+      sampleRate: 48000,
+    } as unknown as AudioBuffer;
+    const decode = vi.fn(async () => forward);
+    const reverse = vi.fn(() => reversed);
     const audioContextFactory = vi.fn(() => ({}) as AudioContext);
     const onRecorded = vi.fn();
 
@@ -38,6 +44,7 @@ describe("<AudioRecorder />", () => {
         recorderFactory={recorderFactory}
         audioContextFactory={audioContextFactory}
         decode={decode}
+        reverse={reverse}
       />,
     );
 
@@ -49,7 +56,12 @@ describe("<AudioRecorder />", () => {
     expect(stop).toHaveBeenCalled();
 
     expect(decode).toHaveBeenCalledWith(blob, expect.anything());
-    expect(onRecorded).toHaveBeenCalledWith(fakeBuffer);
+    expect(reverse).toHaveBeenCalledWith(forward, expect.anything());
+    expect(onRecorded).toHaveBeenCalledWith({
+      forward,
+      reverse: reversed,
+      durationMs: 500,
+    });
     expect(await screen.findByRole("button", { name: /enregistrer/i })).toBeInTheDocument();
   });
 

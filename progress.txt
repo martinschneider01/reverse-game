@@ -106,3 +106,89 @@ Design notes worth flagging for the next agent:
 
 Next up: issue #4 (T3 — inversion + slider vitesse + toggle direction).
 
+2026-05-01 — Issue #4 (T3: Inversion + slider vitesse + toggle direction)
+
+Audio pipeline now feature-complete for the gameplay loop. Demo page records →
+plays forward → toggles reverse → varies speed (0.25–2× with snap on 1×). All
+gates green: 49 tests across 8 files, typecheck clean, oxlint clean,
+oxfmt --check clean, vite build OK (PWA SW generated).
+
+Modules delivered:
+  - src/audio/recording.ts — shared `Recording = { forward, reverse, durationMs }`
+    + `Direction` type. Standalone module so components, wrappers and (future)
+    store can all import it without a circular dep.
+  - src/audio/reverseBuffer.ts (+ .test.ts) — pure fn `(AudioBuffer, factory)
+    => AudioBuffer`. The factory is either a `(channels, length, sampleRate)
+    => AudioBuffer` callback (used in tests) or an `AudioContext` whose
+    `createBuffer` is invoked. 7 tests: mono/stereo/odd-length/single-sample,
+    sample-rate + channel count + length preserved, source not mutated,
+    AudioContext path. Per-channel reverse via index walk on a fresh
+    Float32Array allocated by the factory — source channel data is read but
+    never mutated.
+  - src/audio/wrappers/player.ts — extended:
+      • `load(Recording)` (was `load(AudioBuffer)`)
+      • `setRate(rate)` — applied to live source's `playbackRate.value` if
+        playing; otherwise stored for the next play().
+      • `setDirection('forward'|'reverse')` — if not playing, just stores it;
+        if playing AND the new direction differs, disposes the current source
+        and re-starts a new one with the other buffer (rate preserved). The
+        same-direction case is a no-op.
+    17 tests now (was 9) — covered same-direction no-op, paused-direction-set
+    no-op, rate preserved across direction swap, no spurious onEnded fired
+    when setDirection replaces the source mid-playback.
+  - src/components/AudioRecorder.tsx — callback signature changed: emits a
+    `Recording`. Computes both buffers via injected `decode` then `reverse`,
+    derives `durationMs` as `forward.length / forward.sampleRate * 1000`.
+    Test updated; new `reverse` prop wired with the same factory-injection
+    convention as `decode`/`recorderFactory`.
+  - src/components/AudioPlayer.tsx — props changed: takes a `recording` (was
+    `buffer`) plus an optional `initialDirection`. UI now renders:
+      • play/pause toggle (existing)
+      • a "Sens : à l'endroit / à l'envers" toggle button
+      • a `<input type="range">` 0.25–2.0 step 0.01 with `aria-label="Vitesse"`,
+        snapping to 1.0 within ±0.05 (constant SNAP_RANGE in the file).
+    7 tests (was 2): slider change → setRate, slider snap on 1×, extreme
+    values 0.25 / 2.0, direction toggle alternates calls, initialDirection
+    primes the player on mount.
+
+Design notes worth flagging for the next agent:
+
+  - **Why factory injection for reverseBuffer**: the function needs to allocate
+    a fresh AudioBuffer. In jsdom there is no AudioContext, so the test passes
+    a `(channels, length, sampleRate) => AudioBuffer` factory directly.
+    Production code passes an AudioContext (the function detects it by
+    `typeof factory === "function"` vs object) and calls `ctx.createBuffer`.
+    Keeps the function pure-ish without coupling to the AudioContext API.
+  - **Direction swap = source recreate, no offset preservation**: when
+    setDirection is called mid-playback, we dispose and start a new source
+    from t=0 with the other buffer. Restoring playback offset via
+    `start(when, offset)` was tempting but adds complexity (AudioContext
+    timeline math) and is not in PROJECT.md §3.6's spec ("swap entre les
+    deux buffers"). If users complain about the audible restart, the place
+    to add offset preservation is `setDirection` in player.ts — read
+    `audioContext.currentTime - playStartTime` and pass to `start()`.
+  - **initialDirection prop on AudioPlayer**: added now (not strictly required
+    by T3 AC, but trivial and unblocks T5's GuessingPhase, which needs the
+    "original" player to start in `reverse`). One ref-check on first render
+    calls setDirection if non-default. Doesn't react to prop changes after
+    mount — that would require a useEffect; punt until T5 actually needs it.
+  - **AudioPlayer slider testing**: native `dispatchEvent` does NOT trigger
+    React's synthetic onChange in jsdom because the React 19 controlled-input
+    intercept reads via property descriptors that the bare `value =` assign
+    bypasses. Used `fireEvent.change(input, { target: { value } })` from
+    @testing-library/react instead — that one works.
+  - **Recording vs AudioBuffer in the player**: only the player owns the
+    "which side am I playing" state. Components above (AudioPlayer,
+    AudioRecorder) don't need to know the two buffers exist beyond storing
+    them. Keep this boundary as we wire the store in T4 — it should hold
+    Recording, not two separate AudioBuffer fields.
+  - **No coverage tool wired into the gate** (still). reverseBuffer and
+    decodeRecording are 100% by inspection. If we want enforcement, T4 would
+    be the moment (the gameStore tests will be the next batch claiming 100%).
+  - **MIN_RATE / MAX_RATE / SNAP_RANGE** are file-local constants in
+    AudioPlayer.tsx. If T4+ wants to make the range configurable per phase,
+    promote them to props. For now the same constants apply to A's preview,
+    B's player, and the reveal players — matches PROJECT.md §3.3.
+
+Next up: issue #5 (T4 — state machine + phases Menu/Permission/HandoffA/RecordingA).
+

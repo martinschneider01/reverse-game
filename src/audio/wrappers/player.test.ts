@@ -1,10 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createPlayer } from "./player";
+import type { Recording } from "@/audio/recording";
+
+class FakeAudioParam {
+  value: number;
+  constructor(initial: number) {
+    this.value = initial;
+  }
+}
 
 class FakeBufferSource {
   static instances: FakeBufferSource[] = [];
   buffer: AudioBuffer | null = null;
   onended: (() => void) | null = null;
+  playbackRate = new FakeAudioParam(1);
   start = vi.fn((_when?: number, _offset?: number) => {});
   stop = vi.fn(() => {});
   disconnect = vi.fn(() => {});
@@ -32,37 +41,45 @@ function makeBuffer(length: number, sampleRate = 48000): AudioBuffer {
   } as unknown as AudioBuffer;
 }
 
+function makeRecording(length = 48000): Recording {
+  return {
+    forward: makeBuffer(length),
+    reverse: makeBuffer(length),
+    durationMs: 1000,
+  };
+}
+
 describe("createPlayer", () => {
   beforeEach(() => {
     FakeBufferSource.instances = [];
   });
 
-  it("play() creates a buffer source, attaches the loaded buffer, connects to destination, and starts", () => {
+  it("play() creates a buffer source, attaches the forward buffer, connects, and starts", () => {
     const ctx = new FakeAudioContext();
     const player = createPlayer(ctx as unknown as AudioContext);
-    const buffer = makeBuffer(48000);
-    player.load(buffer);
+    const rec = makeRecording();
+    player.load(rec);
 
     player.play();
 
     const source = FakeBufferSource.instances.at(-1)!;
     expect(ctx.createBufferSource).toHaveBeenCalledTimes(1);
-    expect(source.buffer).toBe(buffer);
+    expect(source.buffer).toBe(rec.forward);
     expect(source.connect).toHaveBeenCalledWith(ctx.destination);
     expect(source.start).toHaveBeenCalled();
   });
 
-  it("play() throws if no buffer has been loaded", () => {
+  it("play() throws if no recording has been loaded", () => {
     const ctx = new FakeAudioContext();
     const player = createPlayer(ctx as unknown as AudioContext);
 
-    expect(() => player.play()).toThrow(/no buffer/i);
+    expect(() => player.play()).toThrow(/no recording/i);
   });
 
   it("pause() stops the source and disconnects it", () => {
     const ctx = new FakeAudioContext();
     const player = createPlayer(ctx as unknown as AudioContext);
-    player.load(makeBuffer(48000));
+    player.load(makeRecording());
     player.play();
 
     const source = FakeBufferSource.instances.at(-1)!;
@@ -81,7 +98,7 @@ describe("createPlayer", () => {
   it("calling play() twice replaces the previous source", () => {
     const ctx = new FakeAudioContext();
     const player = createPlayer(ctx as unknown as AudioContext);
-    player.load(makeBuffer(48000));
+    player.load(makeRecording());
     player.play();
     const first = FakeBufferSource.instances.at(-1)!;
 
@@ -99,7 +116,7 @@ describe("createPlayer", () => {
     const player = createPlayer(ctx as unknown as AudioContext);
     const onEnded = vi.fn();
     player.onEnded(onEnded);
-    player.load(makeBuffer(48000));
+    player.load(makeRecording());
     player.play();
 
     const source = FakeBufferSource.instances.at(-1)!;
@@ -113,7 +130,7 @@ describe("createPlayer", () => {
     const player = createPlayer(ctx as unknown as AudioContext);
     const onEnded = vi.fn();
     player.onEnded(onEnded);
-    player.load(makeBuffer(48000));
+    player.load(makeRecording());
     player.play();
 
     player.pause();
@@ -121,28 +138,131 @@ describe("createPlayer", () => {
     expect(onEnded).not.toHaveBeenCalled();
   });
 
-  it("load() replaces the buffer used on the next play()", () => {
+  it("load() replaces the recording used on the next play()", () => {
     const ctx = new FakeAudioContext();
     const player = createPlayer(ctx as unknown as AudioContext);
-    const a = makeBuffer(1000);
-    const b = makeBuffer(2000);
+    const a = makeRecording();
+    const b = makeRecording();
     player.load(a);
     player.play();
-    expect(FakeBufferSource.instances.at(-1)!.buffer).toBe(a);
+    expect(FakeBufferSource.instances.at(-1)!.buffer).toBe(a.forward);
 
     player.load(b);
     player.play();
-    expect(FakeBufferSource.instances.at(-1)!.buffer).toBe(b);
+    expect(FakeBufferSource.instances.at(-1)!.buffer).toBe(b.forward);
   });
 
   it("resumes the AudioContext if suspended on play()", () => {
     const ctx = new FakeAudioContext();
     ctx.state = "suspended";
     const player = createPlayer(ctx as unknown as AudioContext);
-    player.load(makeBuffer(48000));
+    player.load(makeRecording());
 
     player.play();
 
     expect(ctx.resume).toHaveBeenCalled();
+  });
+
+  it("setRate before play() applies to the next source's playbackRate", () => {
+    const ctx = new FakeAudioContext();
+    const player = createPlayer(ctx as unknown as AudioContext);
+    player.load(makeRecording());
+    player.setRate(0.5);
+
+    player.play();
+
+    const source = FakeBufferSource.instances.at(-1)!;
+    expect(source.playbackRate.value).toBe(0.5);
+  });
+
+  it("setRate during playback updates the live source's playbackRate without restarting", () => {
+    const ctx = new FakeAudioContext();
+    const player = createPlayer(ctx as unknown as AudioContext);
+    player.load(makeRecording());
+    player.play();
+    const source = FakeBufferSource.instances.at(-1)!;
+
+    player.setRate(2);
+
+    expect(source.playbackRate.value).toBe(2);
+    expect(FakeBufferSource.instances).toHaveLength(1);
+    expect(source.stop).not.toHaveBeenCalled();
+  });
+
+  it("setDirection('reverse') before play() makes the next play use the reverse buffer", () => {
+    const ctx = new FakeAudioContext();
+    const player = createPlayer(ctx as unknown as AudioContext);
+    const rec = makeRecording();
+    player.load(rec);
+    player.setDirection("reverse");
+
+    player.play();
+
+    expect(FakeBufferSource.instances.at(-1)!.buffer).toBe(rec.reverse);
+  });
+
+  it("setDirection during playback swaps the active buffer by replacing the source", () => {
+    const ctx = new FakeAudioContext();
+    const player = createPlayer(ctx as unknown as AudioContext);
+    const rec = makeRecording();
+    player.load(rec);
+    player.play();
+    const first = FakeBufferSource.instances.at(-1)!;
+    expect(first.buffer).toBe(rec.forward);
+
+    player.setDirection("reverse");
+
+    const second = FakeBufferSource.instances.at(-1)!;
+    expect(second).not.toBe(first);
+    expect(first.stop).toHaveBeenCalled();
+    expect(first.disconnect).toHaveBeenCalled();
+    expect(second.buffer).toBe(rec.reverse);
+    expect(second.start).toHaveBeenCalled();
+  });
+
+  it("setDirection during playback preserves the current rate", () => {
+    const ctx = new FakeAudioContext();
+    const player = createPlayer(ctx as unknown as AudioContext);
+    player.load(makeRecording());
+    player.setRate(0.75);
+    player.play();
+
+    player.setDirection("reverse");
+
+    expect(FakeBufferSource.instances.at(-1)!.playbackRate.value).toBe(0.75);
+  });
+
+  it("setDirection while paused does not start playback", () => {
+    const ctx = new FakeAudioContext();
+    const player = createPlayer(ctx as unknown as AudioContext);
+    player.load(makeRecording());
+
+    player.setDirection("reverse");
+
+    expect(FakeBufferSource.instances).toHaveLength(0);
+  });
+
+  it("setting the same direction during playback is a no-op (no source recreated)", () => {
+    const ctx = new FakeAudioContext();
+    const player = createPlayer(ctx as unknown as AudioContext);
+    player.load(makeRecording());
+    player.play();
+
+    player.setDirection("forward");
+
+    expect(FakeBufferSource.instances).toHaveLength(1);
+  });
+
+  it("onEnded is not fired when setDirection replaces the source mid-playback", () => {
+    const ctx = new FakeAudioContext();
+    const player = createPlayer(ctx as unknown as AudioContext);
+    const onEnded = vi.fn();
+    player.onEnded(onEnded);
+    player.load(makeRecording());
+    player.play();
+
+    player.setDirection("reverse");
+
+    expect(onEnded).not.toHaveBeenCalled();
   });
 });
