@@ -46,6 +46,7 @@ export function RevealPhase({ audioContextFactory, playerFactory }: RevealPhaseP
           <AudioPlayer
             recording={guessRecording}
             audioContext={ctx}
+            initialDirection="reverse"
             playerFactory={playerFactory}
           />
         </div>

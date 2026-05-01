@@ -856,3 +856,59 @@ player AND from the new preview panel above). After those, the visual
 polish track unlocks via #9 (Tailwind setup), which then enables #10
 (Menu redesign) and #11 (rest-of-phases polish).
 
+
+2026-05-01 — Issue #16 (RevealPhase : "Voix du joueur B" à l'envers par défaut)
+
+One-prop fix landing the reveal-screen UX intended by the spec: B's recording
+on RevealPhase now starts in `reverse`, because the moment of revelation is
+hearing how their forward attempt sounded *as the puzzle's reverse*. The
+original recording stays `forward` (revelation = hearing the unscrambled
+phrase). The direction toggle remains available on both players so they can
+flip back and forth to compare.
+
+All gates green: 121 tests across 19 files (was 120), typecheck clean, oxlint
+clean, oxfmt --check clean.
+
+Modules touched:
+  - src/phases/RevealPhase.tsx — added `initialDirection="reverse"` to the
+    AudioPlayer rendering `guessRecording`. Used `initialDirection` (not
+    `lockDirection`) on purpose: per the AC, the toggle must remain
+    functional. The original player is unchanged (still defaults to
+    `forward` since `initialDirection` defaults to `"forward"` in
+    AudioPlayer's prop signature).
+  - src/phases/RevealPhase.test.tsx — added one test asserting both
+    direction buttons render with the right initial label: original shows
+    "à l'endroit" (forward), guess shows "à l'envers" (reverse). The other
+    4 RevealPhase tests are untouched and still pass.
+
+Design notes worth flagging for the next agent:
+
+  - **Why `initialDirection`, not `lockDirection`**: the AC for #16
+    explicitly says "Le toggle de direction reste fonctionnel sur les deux
+    players" — the reverse default is a seed, not a constraint. This
+    contrasts with GuessingPhase, where the original player is `lockDirection
+    ="reverse"` (per #13) because letting B flip would trivialize the
+    puzzle. RevealPhase is the post-puzzle screen, comparison is the
+    point.
+  - **No reactive update needed**. AudioPlayer's `initialDirection` is
+    consumed once at mount (priming the underlying player via the
+    `playerRef.current === null` guard). RevealPhase mounts once per round
+    (App swaps phase components on phase changes, and within a reveal
+    phase we don't remount), so a useEffect-on-prop pattern would be
+    dead code. Same caveat that's been documented since T3.
+  - **Test choice**: I asserted on the toggle button label rather than
+    snooping on the fake player's setDirection calls. Reasoning: (a)
+    the underlying player is recreated per render in the test (`makeFakePlayer`
+    returns a fresh fake each call, so capturing setDirection mid-flight
+    is awkward), (b) the AC reads as user-visible behavior ("affiche
+    "à l'envers" au montage"), and the toggle button label IS that
+    user-visible state. Cleaner test, same coverage.
+  - **No new dependencies**.
+
+Next up: cheapest unblocked items remaining are #14 (compact AudioPlayer
+mode without slider for "Ta voix" — adds `showRateControl?: boolean` prop,
+small) and then the visual polish track via #9 (Tailwind setup, HITL on
+design tokens) → #10 (Menu redesign) → #11 (rest-of-phases polish).
+After #14 the gameplay-mechanics backlog for Mode 1 MVP is empty; the
+remaining open work is purely cosmetic + the HITL device test on #1.
+

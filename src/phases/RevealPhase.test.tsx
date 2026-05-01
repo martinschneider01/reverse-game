@@ -53,6 +53,16 @@ describe("<RevealPhase />", () => {
     expect(screen.getByLabelText(/notes/i)).toHaveTextContent("ma note");
   });
 
+  it("defaults the 'Voix du joueur B' player to reverse direction (original stays forward)", () => {
+    render(
+      <RevealPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    const directionButtons = screen.getAllByRole("button", { name: /sens/i });
+    expect(directionButtons).toHaveLength(2);
+    expect(directionButtons[0]).toHaveTextContent(/à l'endroit/i);
+    expect(directionButtons[1]).toHaveTextContent(/à l'envers/i);
+  });
+
   it("renders only the original player when guessRecording is null", () => {
     useGameStore.setState({
       ...INITIAL_STATE,
