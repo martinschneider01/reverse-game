@@ -1301,3 +1301,180 @@ agent-blockable in the visual-polish track, plus the standing HITL
 device test on #1. The Mode 1 MVP is fully implemented and visually
 coherent; the only remaining "code" work needs a human in the loop on
 copy / illustration choices.
+
+
+---
+
+# 2026-05-01T19:56Z — Issue #10: MenuPhase redesign (landing screen)
+
+Worked the last remaining agent-blockable visual task: refonte du
+MenuPhase. Issue #10 closed.
+
+What I shipped:
+
+  - src/phases/MenuPhase.tsx — full rewrite. Replaces the bare
+    `<h1>Reverso</h1>` + 1-line tagline + button trio with:
+      * a centered hero `.menu-screen` layout (80dvh tall, anchored
+        vertically, text-center)
+      * a wordmark `<h1 className="brand-mark">` whose visible content
+        is "Reverso" + an aria-hidden mirrored echo "osreveR" beneath
+        it (transform: scaleY(-1)). The echo demonstrates the game's
+        mechanic visually — you "see" the audio reversal in the logo.
+        I gave the h1 an aria-label="Reverso" so screen readers don't
+        try to re-read the echo as "osreveR".
+      * tagline `Enregistre. Écoute à l'envers. Devine.` — three beats
+        matching A-records / app-reverses / B-guesses.
+      * primary CTA `Nouvelle partie` (per AC text — yes, semantically
+        odd for a *first* round, but the AC was explicit and the same
+        button text is already used on RevealPhase, so we keep one
+        canonical "start a round" verb across the app)
+      * `<details>` "Comment ça marche ?" with 3 numbered steps. Uses
+        the existing `details` base-CSS recipe from #9, plus a new
+        `.menu-howto` selector for the inner `<ol>` (the base details
+        recipe targeted `<ul>`). Steps are kept short (1 line each)
+        and bold the role nouns (Joueur A / Joueur B) so the
+        round-flow is scannable at a glance.
+      * footer micro-copy `Hors-ligne · sans compte · entre amis` —
+        addresses the implicit "is this app safe to install / does it
+        need a login" anxiety that the user might have on first visit.
+
+  - src/index.css — appended a menu-screen block to `@layer
+    components`. New classes:
+      * `.menu-screen` — overrides the section gap from 1rem → 2rem
+        (more breathing room for a landing screen) and uses 80dvh
+        (vs `.center-screen`'s 50dvh) so the hero feels properly
+        anchored on tall phone viewports.
+      * `.brand` — column flex wrapping wordmark + tagline.
+      * `.brand-mark` — the h1 wordmark. font-size:
+        `clamp(3rem, 14vw, 4.5rem)`. Fluid scaling means it stays
+        readable at 320px and doesn't get absurd on tablet width.
+        font-weight 800, letter-spacing -0.02em — display-typography
+        treatment, not body.
+      * `.brand-mark-main` — the gradient fill on "Reverso". Pink
+        primary → primary-hover, 135deg. Uses `background-clip: text`
+        + `color: transparent` (with `-webkit-background-clip: text`
+        for Safari, which is the dominant target on a mobile party
+        game). Falls back to nothing visible on browsers that don't
+        support background-clip:text — but those are <1% in 2026 and
+        the fallback would be "no text", which is a known acceptable
+        outcome for this technique. We could add `color: var(...)` as
+        a fallback if it becomes a real problem.
+      * `.brand-mark-echo` — half-size, muted, opacity 0.45,
+        scaleY(-1). The negative `margin-top: -0.15em` pulls it up so
+        it sits just below the baseline of "Reverso", creating the
+        "reflection" illusion. user-select:none so a long-press doesn't
+        select the mirrored gibberish.
+      * `.brand-tagline` — muted color, max-width 22rem so it wraps to
+        ~1 line on phones, ~1.4 lines on very narrow viewports.
+      * `.cta-primary` — the variant for landing-page-grade primary
+        CTAs. Bigger than the default button (font-size 1.125rem,
+        padding 1rem 1.5rem, radius-lg). `align-self: stretch` so it
+        spans the section column width on mobile (full-width CTA is
+        the mobile-first convention). A pink box-shadow gives it a
+        soft glow that reinforces "this is the action". Hover bumps
+        the shadow.
+      * `.menu-howto > ol` — re-implements the muted-numbered-list
+        styling locally (the base details recipe in #9 only targets
+        `> ul`). `text-align: left` because the parent
+        `.menu-screen` text-aligns center, but lists need to be
+        left-aligned for legibility.
+      * `.menu-footer` — tiny muted footer copy, letter-spaced.
+
+  - src/phases/MenuPhase.test.tsx — updated the existing single test
+    (button text changed: "démarrer une partie" → "nouvelle partie")
+    and added two new RTL tests:
+      * verifies the h1 wordmark is rendered (uses accessible name
+        "Reverso" because the aria-label takes precedence over the
+        mirrored echo span)
+      * verifies the "Comment ça marche" disclosure with 3 list items.
+        I assert on listitem count so the test fails if anyone
+        accidentally drops a step.
+    The startGame transition test (the only existing one) is preserved
+    with updated button-name regex. All 126 tests pass.
+
+Verification:
+
+  - `bun run typecheck` — clean (note: `bun typecheck` works too —
+    the script delegates to `tsc --noEmit`)
+  - `bun run test` — 126/126 pass. **WARNING for next agent**: do NOT
+    use `bun test` (lowercase, no `run`). That triggers Bun's built-
+    in test runner which is incompatible with this project's vitest
+    setup (no `vi.stubGlobal`, no `vi.unstubAllGlobals`, etc.). Always
+    `bun run test` to invoke the npm script.
+  - `bun run lint` — 0 warnings / 0 errors
+  - `bun run build` — passes. CSS bundle: 12.81 → 14.66 kB raw
+    (+1.85 kB), 3.38 → 3.81 kB gzip (+0.43 kB). PWA precache 221.73 →
+    224.46 KiB. Acceptable for an entire landing-page redesign.
+
+HITL caveat (re-read the AC of #10):
+
+  The issue explicitly says "HITL : choix de composition (logo,
+  accroche, illustration éventuelle) à valider avec l'humain." I made
+  three composition choices the human should now validate on a real
+  device:
+
+  1. **Wordmark concept**: gradient "Reverso" with a mirrored
+     "osreveR" echo. I picked this because it visually demonstrates
+     the game's reverse-audio mechanic — the logo IS the metaphor.
+     The risk is that the echo reads as a typo / rendering bug to a
+     first-time visitor. If user testing flips on this, fall back to
+     a single "Reverso" wordmark in the same gradient (just delete
+     the `.brand-mark-echo` span and the `display:flex` wrapper
+     becomes redundant).
+
+  2. **Tagline**: "Enregistre. Écoute à l'envers. Devine." Three short
+     verbs in three sentences, matching the round's three actions
+     (A-records / app-reverses / B-guesses). Rejected alternatives:
+     "Le party game vocal qui inverse tes phrases" (too explainy),
+     "Joue à reconnaître des phrases inversées" (boring imperative).
+     The current copy is conversational and active.
+
+  3. **No illustration**. I deliberately did not add an SVG / PNG
+     illustration. Rationale: (a) the wordmark+echo IS the
+     illustration; (b) we have no asset pipeline for stock or
+     commissioned art, and a hand-coded SVG of a "sound wave" would
+     feel generic; (c) PROJECT.md leans against asset bloat — keep
+     the bundle lean. If the human disagrees, an illustration would
+     slot below `.brand` and above `.cta-primary`, sized at
+     ~clamp(8rem, 30vw, 12rem).
+
+  All three are easy to revert / iterate. The component-CSS recipes
+  are isolated under `.menu-...` selectors so a redesign doesn't
+  touch the rest of the design system.
+
+Other design notes for next agent:
+
+  - **Why `.cta-primary` and not just upsizing `<button>` directly**:
+    other phases (HandoffA "Continuer", PermissionPhase, etc.) use
+    the default 0.75rem-padded button which is correct for in-flow
+    actions. The MenuPhase CTA is *the* call-to-action of the entire
+    app and warrants a heavier treatment. Hence a dedicated variant.
+    If a second landing-page-grade CTA shows up elsewhere, reuse
+    `.cta-primary`. The variant taxonomy is now: default = in-flow
+    primary, `.cta-primary` = page-level primary, `.btn-secondary` =
+    neutral, `.btn-danger` = destructive.
+
+  - **Why `min-height: 80dvh` on `.menu-screen` vs `.center-screen`'s
+    50dvh**: a menu/landing is the only screen that needs to anchor
+    the eye dead-center vertically; the rest are mid-flow transitions
+    where you've just tapped through and don't need re-orientation.
+    80dvh on a 375×812 viewport leaves enough room for the iOS
+    safe-area + the URL bar without forcing scroll.
+
+  - **The CSS file is now 336 → 411 lines**. If we add another
+    phase-specific component layer (#10-style local recipes), I'd
+    consider splitting `index.css` into per-feature files, but two
+    component blocks (general `.card`/`.kicker` + the menu block) is
+    still well within the "one CSS file is fine" zone.
+
+What's left:
+
+  - **#1 (parent PRD)**: still open. The MVP is fully implemented and
+    visually polished. The only remaining work is the manual end-to-
+    end test on a real phone (PROJECT.md §12 step 7), which is HITL
+    by definition. An agent cannot close #1 without that human sign-
+    off — so I'm leaving it open and not touching it.
+
+If both #1 and #10 are intended to be closed by an agent, the agent
+that closes #1 should first verify the human has signed off on the
+real-device test (e.g., via a comment on the issue).
