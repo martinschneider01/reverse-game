@@ -27,6 +27,7 @@ function makeFakePlayer(): Player {
     pause: vi.fn(),
     setRate: vi.fn(),
     setDirection: vi.fn(),
+    setGain: vi.fn(),
     onEnded: vi.fn(),
   };
 }

@@ -23,10 +23,21 @@ class FakeBufferSource {
   }
 }
 
+class FakeGainNode {
+  static instances: FakeGainNode[] = [];
+  gain = new FakeAudioParam(1);
+  connect = vi.fn();
+  disconnect = vi.fn();
+  constructor() {
+    FakeGainNode.instances.push(this);
+  }
+}
+
 class FakeAudioContext {
   destination = {} as AudioDestinationNode;
   currentTime = 0;
   createBufferSource = vi.fn(() => new FakeBufferSource() as unknown as AudioBufferSourceNode);
+  createGain = vi.fn(() => new FakeGainNode() as unknown as GainNode);
   resume = vi.fn(async () => {});
   state: AudioContextState = "running";
 }
@@ -52,9 +63,10 @@ function makeRecording(length = 48000): Recording {
 describe("createPlayer", () => {
   beforeEach(() => {
     FakeBufferSource.instances = [];
+    FakeGainNode.instances = [];
   });
 
-  it("play() creates a buffer source, attaches the forward buffer, connects, and starts", () => {
+  it("play() creates a buffer source, routes it through the GainNode, and starts", () => {
     const ctx = new FakeAudioContext();
     const player = createPlayer(ctx as unknown as AudioContext);
     const rec = makeRecording();
@@ -63,9 +75,11 @@ describe("createPlayer", () => {
     player.play();
 
     const source = FakeBufferSource.instances.at(-1)!;
+    const gain = FakeGainNode.instances.at(-1)!;
     expect(ctx.createBufferSource).toHaveBeenCalledTimes(1);
     expect(source.buffer).toBe(rec.forward);
-    expect(source.connect).toHaveBeenCalledWith(ctx.destination);
+    expect(source.connect).toHaveBeenCalledWith(gain);
+    expect(gain.connect).toHaveBeenCalledWith(ctx.destination);
     expect(source.start).toHaveBeenCalled();
   });
 
@@ -264,5 +278,56 @@ describe("createPlayer", () => {
     player.setDirection("reverse");
 
     expect(onEnded).not.toHaveBeenCalled();
+  });
+
+  it("creates a single GainNode connected to the destination at construction", () => {
+    const ctx = new FakeAudioContext();
+    createPlayer(ctx as unknown as AudioContext);
+
+    expect(ctx.createGain).toHaveBeenCalledTimes(1);
+    const gain = FakeGainNode.instances.at(-1)!;
+    expect(gain.connect).toHaveBeenCalledWith(ctx.destination);
+  });
+
+  it("defaults the gain value to 1.0 when no options are provided", () => {
+    const ctx = new FakeAudioContext();
+    createPlayer(ctx as unknown as AudioContext);
+
+    const gain = FakeGainNode.instances.at(-1)!;
+    expect(gain.gain.value).toBe(1);
+  });
+
+  it("applies the configured initial gain from options", () => {
+    const ctx = new FakeAudioContext();
+    createPlayer(ctx as unknown as AudioContext, { gain: 1.5 });
+
+    const gain = FakeGainNode.instances.at(-1)!;
+    expect(gain.gain.value).toBe(1.5);
+  });
+
+  it("setGain() updates the GainNode value live", () => {
+    const ctx = new FakeAudioContext();
+    const player = createPlayer(ctx as unknown as AudioContext);
+    const gain = FakeGainNode.instances.at(-1)!;
+
+    player.setGain(2);
+
+    expect(gain.gain.value).toBe(2);
+  });
+
+  it("reuses the same GainNode across successive play() calls", () => {
+    const ctx = new FakeAudioContext();
+    const player = createPlayer(ctx as unknown as AudioContext);
+    player.load(makeRecording());
+
+    player.play();
+    player.play();
+
+    expect(ctx.createGain).toHaveBeenCalledTimes(1);
+    const gain = FakeGainNode.instances.at(-1)!;
+    expect(FakeBufferSource.instances).toHaveLength(2);
+    for (const s of FakeBufferSource.instances) {
+      expect(s.connect).toHaveBeenCalledWith(gain);
+    }
   });
 });

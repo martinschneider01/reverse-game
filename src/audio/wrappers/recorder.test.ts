@@ -69,14 +69,34 @@ describe("createRecorder", () => {
     vi.restoreAllMocks();
   });
 
-  it("requests microphone permission with audio:true on start()", async () => {
+  it("requests microphone permission with AGC/NS/EC disabled by default on start()", async () => {
     const getUserMedia = installFakeGetUserMedia();
     const rec = createRecorder({ maxDurationMs: 1000 });
 
     await rec.start();
 
-    expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: {
+        autoGainControl: false,
+        noiseSuppression: false,
+        echoCancellation: false,
+      },
+    });
     expect(FakeMediaRecorder.lastInstance().start).toHaveBeenCalled();
+  });
+
+  it("forwards a caller-provided audioConstraints object to getUserMedia", async () => {
+    const getUserMedia = installFakeGetUserMedia();
+    const rec = createRecorder({
+      maxDurationMs: 1000,
+      audioConstraints: { autoGainControl: true, channelCount: 1 },
+    });
+
+    await rec.start();
+
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: { autoGainControl: true, channelCount: 1 },
+    });
   });
 
   it("stop() resolves with the recorded Blob", async () => {

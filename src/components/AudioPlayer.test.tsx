@@ -13,6 +13,7 @@ function makeFakePlayer(): {
   pause: ReturnType<typeof vi.fn>;
   setRate: ReturnType<typeof vi.fn>;
   setDirection: ReturnType<typeof vi.fn>;
+  setGain: ReturnType<typeof vi.fn>;
   endedHandler: { current: (() => void) | null };
 } {
   const load = vi.fn();
@@ -20,17 +21,19 @@ function makeFakePlayer(): {
   const pause = vi.fn();
   const setRate = vi.fn();
   const setDirection = vi.fn();
+  const setGain = vi.fn();
   const endedHandler: { current: (() => void) | null } = { current: null };
   const onEnded = vi.fn((cb: () => void) => {
     endedHandler.current = cb;
   });
   return {
-    player: { load, play, pause, setRate, setDirection, onEnded },
+    player: { load, play, pause, setRate, setDirection, setGain, onEnded },
     load,
     play,
     pause,
     setRate,
     setDirection,
+    setGain,
     endedHandler,
   };
 }

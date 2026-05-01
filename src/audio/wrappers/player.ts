@@ -6,15 +6,30 @@ export type Player = {
   pause: () => void;
   setRate: (rate: number) => void;
   setDirection: (direction: Direction) => void;
+  setGain: (gain: number) => void;
   onEnded: (callback: () => void) => void;
 };
 
-export function createPlayer(audioContext: AudioContext): Player {
+export type PlayerOptions = {
+  // Multiplier applied between the buffer source and destination.
+  // Default 1.0 (unity gain). Issue #18: a GainNode in the chain lets callers
+  // boost output above the buffer's native level on devices where Web Audio
+  // routing produces a quieter signal than HTMLAudioElement.
+  gain?: number;
+};
+
+const DEFAULT_GAIN = 1;
+
+export function createPlayer(audioContext: AudioContext, options: PlayerOptions = {}): Player {
   let recording: Recording | null = null;
   let source: AudioBufferSourceNode | null = null;
   let endedCallback: (() => void) | null = null;
   let rate = 1;
   let direction: Direction = "forward";
+
+  const gainNode = audioContext.createGain();
+  gainNode.gain.value = options.gain ?? DEFAULT_GAIN;
+  gainNode.connect(audioContext.destination);
 
   function disposeSource(): void {
     if (source !== null) {
@@ -42,7 +57,7 @@ export function createPlayer(audioContext: AudioContext): Player {
     const node = audioContext.createBufferSource();
     node.buffer = direction === "forward" ? recording.forward : recording.reverse;
     node.playbackRate.value = rate;
-    node.connect(audioContext.destination);
+    node.connect(gainNode);
     node.onended = () => {
       if (source === node) {
         source = null;
@@ -79,6 +94,10 @@ export function createPlayer(audioContext: AudioContext): Player {
       if (source !== null) {
         startSource();
       }
+    },
+
+    setGain(newGain: number) {
+      gainNode.gain.value = newGain;
     },
 
     onEnded(callback: () => void) {

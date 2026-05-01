@@ -6,6 +6,17 @@ export type Recorder = {
 
 export type RecorderOptions = {
   maxDurationMs: number;
+  // Issue #18: by default the browser enables AGC, NS, and EC which together
+  // can drop the captured level several dB. For a reverse-voice party game we
+  // want the rawest possible signal, so we disable all three by default.
+  // Callers can override per-constraint if needed.
+  audioConstraints?: MediaTrackConstraints;
+};
+
+const DEFAULT_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
+  autoGainControl: false,
+  noiseSuppression: false,
+  echoCancellation: false,
 };
 
 type Session = {
@@ -48,7 +59,8 @@ export function createRecorder(options: RecorderOptions): Recorder {
         throw new Error("Recorder is already recording");
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audio = options.audioConstraints ?? DEFAULT_AUDIO_CONSTRAINTS;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio });
       const mediaRecorder = new MediaRecorder(stream);
 
       let resolveFinal!: (blob: Blob) => void;

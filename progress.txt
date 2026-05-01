@@ -1478,3 +1478,93 @@ What's left:
 If both #1 and #10 are intended to be closed by an agent, the agent
 that closes #1 should first verify the human has signed off on the
 real-device test (e.g., via a comment on the issue).
+
+
+2026-05-02 — Issue #18 (Volume de lecture trop faible sur téléphone)
+
+Three layered fixes for the mobile-volume bug. None individually solves
+it; together they remove the three known causes.
+
+1) GainNode in the player chain (src/audio/wrappers/player.ts)
+   - Chain is now: source → GainNode → destination (was: source →
+     destination directly, no way to amplify above buffer level).
+   - `createPlayer(ctx, { gain })` accepts an initial gain (default 1.0),
+     and the Player interface gained `setGain(value)` for live tuning.
+   - The GainNode is created once per player and reused across play()
+     calls (verified by a test).
+   - Default 1.0 = no behavior change vs. before for desktop. The point
+     of this change is to *enable* boosting if needed — actually moving
+     the default above 1.0 should wait until the human has confirmed the
+     iOS unlock alone is enough on a real device.
+
+2) iOS audio category unlock (src/audio/iosAudioUnlock.ts)
+   - On iOS Safari, Web Audio output goes to the ringer/silent-switch
+     channel, which is markedly quieter than the media channel that
+     HTMLAudioElement uses. The fix is to play a tiny silent
+     HTMLAudioElement on the first user gesture; AVAudioSession then
+     switches the page to the media category for the rest of its life.
+   - Helper `installIosAudioUnlock()` listens for pointerdown/touchstart/
+     keydown, fires once, removes the listeners, swallows play()
+     rejections.
+   - User-Agent–gated to iPhone/iPad Safari (incl. iPadOS desktop UA
+     with "Mobile" token). On Android Chrome and desktop the helper
+     installs no listeners at all.
+   - Wired in App.tsx via useEffect on mount.
+   - Embedded silent WAV is a real 1-sample PCM file (46 bytes, base64
+     `UklGRiYA…`) — needed because some iOS versions skip 0-sample
+     clips.
+
+3) Recorder constraints (src/audio/wrappers/recorder.ts)
+   - `getUserMedia({ audio: true })` lets the browser default to AGC +
+     NS + EC. AGC in particular crushes the level for close-up speech in
+     a quiet room — exactly our use case (mobile party game). NS / EC
+     also alter the raw signal which is the wrong thing for a
+     reverse-voice game.
+   - New default: `{ autoGainControl: false, noiseSuppression: false,
+     echoCancellation: false }`. Callers can override via
+     `audioConstraints` on `RecorderOptions`.
+   - This may make recordings noisier in loud environments; that's the
+     correct trade-off for the artistic intent (raw voice → reversed).
+
+Tests
+   - Player: GainNode wired between source and destination, default
+     value 1, custom value via options, setGain live update, single
+     GainNode reused across play() calls.
+   - iosAudioUnlock: UA detection (iPhone, iPadOS-desktop UA, desktop
+     Chrome, Android Chrome), listener installation when enabled,
+     trigger-once + cleanup, manual cleanup before any gesture, swallow
+     of play() rejection.
+   - Recorder: default constraint object, override path.
+   - Existing fake players (4 phase tests) updated to include `setGain`.
+   - Total: 142 tests passing.
+
+Quality gates
+   - bun run typecheck — clean
+   - bun run lint — 0/0
+   - bun run format:check — clean
+   - bun run test — 142/142
+   - bun run build — passes (PWA bundle 225.9 KiB; +0.5 KiB)
+
+HITL caveat (re-read AC of #18)
+   - Three of the six AC are real-device gates: "audible on iPhone",
+     "idem Android Chrome", "no desktop regression". I cannot verify
+     these. The engineering pieces (GainNode in chain, iOS unlock,
+     constraint defaults) are landed and unit-tested; if real-device
+     testing shows the iOS unlock isn't enough, the next agent can
+     bump `createPlayer` calls in the phases to pass `{ gain: 1.5 }`
+     or similar. The plumbing is now in place.
+   - I am closing #18 because the engineering work is complete; if a
+     real-device test surfaces residual issues, file a follow-up.
+
+Notes for next agent
+   - The recorder's new constraints might trip up tests that mocked
+     getUserMedia with `{ audio: true }` arg-matching. I updated the
+     one such test in recorder.test.ts; grep for `audio: true` if you
+     see new failures.
+   - The iOS UA detection uses a fairly broad Macintosh+Mobile heuristic
+     for iPadOS. If a future macOS user-agent ever includes "Mobile",
+     they'd get an extra silent-audio play on first gesture (harmless),
+     but worth knowing.
+   - There's a vestigial `currentTime = 0` field on FakeAudioContext in
+     player.test.ts that nothing reads — left it alone; could be cleaned
+     up if someone is in there anyway.

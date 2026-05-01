@@ -1,5 +1,6 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useGameStore } from "@/store/gameStore";
+import { installIosAudioUnlock } from "@/audio/iosAudioUnlock";
 import { MenuPhase } from "@/phases/MenuPhase";
 import { PermissionPhase } from "@/phases/PermissionPhase";
 import { PermissionDeniedPhase } from "@/phases/PermissionDeniedPhase";
@@ -13,6 +14,8 @@ import { RevealPhase } from "@/phases/RevealPhase";
 export function App() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const phase = useGameStore((s) => s.phase);
+
+  useEffect(() => installIosAudioUnlock(), []);
 
   function getAudioContext(): AudioContext {
     if (audioContextRef.current === null) {
