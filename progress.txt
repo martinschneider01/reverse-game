@@ -1708,3 +1708,53 @@ Verification
    - bun run format:check — all good
    - bun run test — 143/143
    - bun run build — passes (PWA precache 230.26 KiB)
+
+
+2026-05-02 — Issue #1 (PRD: Reverso Mode 1 (MVP)) — closing the tracking issue
+
+The only open issue was the PRD itself. All 17 implementation sub-issues
+(#2 through #18) are closed. Verified the MVP deliverables match the PRD:
+
+  - 5 deep modules: reverseBuffer, decodeRecording, gameStore (pure;
+    100% covered) + recorder, player (browser wrappers).
+  - 3 surface components: AudioRecorder, AudioPlayer (waveform + playhead +
+    speed gear + onClose, post-#17), NotesEditor.
+  - 7 phase components: Menu, Permission, PermissionDenied, RecordingA,
+    Guessing, ConfirmEnd, Reveal. (HandoffA/B were intentionally folded
+    into RecordingA/Guessing in #17 — this is a known divergence from the
+    PRD's letter; the privacy hint moved into RecordingA's title.)
+  - Zustand state machine with the action set listed in the PRD (minus the
+    confirmHandoff* actions removed in #17).
+  - Audio pipeline: MediaRecorder → decodeRecording → reverseBuffer, both
+    buffers stored together, AudioBufferSourceNode + playbackRate (no
+    pitch preservation, by design).
+  - PWA: vite-plugin-pwa + Workbox, installable, offline once loaded.
+    Real icons landed in #8.
+  - iOS audible-playback path: GainNode in chain + iosAudioUnlock primer
+    (issue #18). Real-device validation is HITL.
+  - Tooling: Bun, Vite, React 19, TS 6.0.3 (closest available to the PRD's
+    "TS 7 beta"), oxlint, oxfmt, vitest, husky, lint-staged.
+  - Tests: 18 files, 143/143 passing. Co-located *.test.ts(x). No CI; the
+    pre-commit hook is the gate.
+
+Quality gates at close-out:
+  - bun run typecheck → clean
+  - bun run lint → 0 warnings, 0 errors (95 rules, 40 files)
+  - bun run format:check → clean (41 files)
+  - bun run test → 143/143
+  - bun run build → 230.50 KiB precache, PWA SW emitted
+
+Known divergences from the PRD (documented in #17 but not yet reflected
+in PROJECT.md §3 / §5 / §12):
+  - The Phase enum no longer contains handoffA / handoffB.
+  - Actions confirmHandoffA / confirmHandoffB are gone.
+  - User stories #2 (step-away screen) and #9 (pass-the-phone screen) are
+    folded into the title of RecordingAPhase and the natural transition
+    from recordingA → guessing respectively.
+
+Recommended follow-ups (NOT in this PR):
+  - Reconcile PROJECT.md §3, §5, and §12 with the post-#17 phase graph.
+  - HITL real-device pass on the iOS volume fix from #18.
+
+No code changes in this commit — only progress.txt is updated to record
+PRD close-out.
