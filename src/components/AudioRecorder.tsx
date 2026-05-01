@@ -189,7 +189,7 @@ export function AudioRecorder({
       const forward = await decode(blob, ctx);
       const reversed = reverse(forward, ctx);
       const durationMs = (forward.length / forward.sampleRate) * 1000;
-      onRecorded({ forward, reverse: reversed, durationMs });
+      onRecorded({ forward, reverse: reversed, durationMs, blob });
       setStatus("idle");
     } catch (err) {
       setStatus("error");

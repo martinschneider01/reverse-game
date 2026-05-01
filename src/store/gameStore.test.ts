@@ -6,12 +6,14 @@ const fakeRecording: Recording = {
   forward: { length: 24000, sampleRate: 48000 } as unknown as AudioBuffer,
   reverse: { length: 24000, sampleRate: 48000 } as unknown as AudioBuffer,
   durationMs: 500,
+  blob: new Blob(),
 };
 
 const otherRecording: Recording = {
   forward: { length: 12000, sampleRate: 48000 } as unknown as AudioBuffer,
   reverse: { length: 12000, sampleRate: 48000 } as unknown as AudioBuffer,
   durationMs: 250,
+  blob: new Blob(),
 };
 
 function reset(): void {

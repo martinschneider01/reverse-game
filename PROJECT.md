@@ -44,7 +44,7 @@ Partage d'un lien à un autre joueur, partie asynchrone ou en temps réel. **Ne 
 
 Liste explicite pour empêcher tout agent de réintroduire ces idées par défaut.
 
-- **Pas de persistance** — ni IndexedDB, ni localStorage pour les recordings/notes. Tout est en mémoire (Zustand). Un refresh = partie perdue. Documenté et accepté.
+- ~~**Pas de persistance** — ni IndexedDB, ni localStorage pour les recordings/notes. Tout est en mémoire (Zustand). Un refresh = partie perdue. Documenté et accepté.~~ **Révisé** : un round actif est maintenant persisté en IndexedDB (cf. §3.5) — un téléphone qui se verrouille n'efface plus la partie. Voir `CHANGELOG.md`.
 - **Pas d'historique de parties.** Quand on revient au menu, tout est oublié.
 - **Pas de scoring, pas de tracking win/lose.** L'app reste neutre, les joueurs s'organisent eux-mêmes.
 - **Pas de système de joueurs nommés / rôles persistants.** Le téléphone change de main physiquement, c'est tout.
@@ -86,7 +86,10 @@ Chaque décision est suivie d'un `Why:` court. Si tu envisages d'aller à l'inve
 
 ### 3.5 Persistance et permissions
 
-- **Tout en mémoire (Zustand), volatile.** Un refresh perd le round.
+- **Round actif persisté en IndexedDB.** Why: les navigateurs mobiles (iOS Safari surtout) déchargent agressivement les PWAs en arrière-plan ; un téléphone qui se verrouille quelques minutes faisait perdre la partie. On persiste le strict nécessaire pour reprendre : phase (`guessing` / `confirmEnd` / `reveal` uniquement — les autres sont éphémères ou n'ont rien à sauvegarder), `originalRecording`, `guessRecording`, `notes`, `listenCount`.
+- **Recordings persistés sous forme de Blob source.** On stocke le Blob Opus/WebM produit par `MediaRecorder` (sérialisé en `ArrayBuffer + mimeType` pour rester portable côté tests). À la rehydratation : `decodeAudioData` + `reverseBuffer` reconstruisent les `AudioBuffer`. Why: `AudioBuffer` n'est pas sérialisable, et le Blob est déjà disponible gratuitement à l'enregistrement.
+- **Sauvegarde debounced (200ms) sur chaque changement du store**, via un abonnement Zustand monté après la rehydratation pour éviter de réécrire pendant l'init. La persistance est best-effort : un échec IDB (quota, navigation privée) est silencieux et n'affecte pas le round courant.
+- **Effacement** : transition vers `menu` (via `backToMenu`) ou `recordingA` sans recording (via `newRound`) déclenche un `clearPersistedState`.
 - **Demande de permission micro au "Démarrer une partie"**, pas au lancement de l'app.
 - **Si refus du micro** : écran d'erreur dédié, instructions courtes spécifiques au navigateur, bouton "Réessayer".
 
@@ -193,6 +196,7 @@ type Recording = {
   forward: AudioBuffer;
   reverse: AudioBuffer;
   durationMs: number;
+  blob: Blob; // source Opus/WebM, retenu pour persistance IDB (cf. §3.5)
 };
 ```
 
@@ -276,7 +280,11 @@ reverse-game/
 │   │   └── PermissionDeniedPhase.tsx
 │   └── store/
 │       ├── gameStore.ts
-│       └── gameStore.test.ts
+│       ├── gameStore.test.ts
+│       ├── persistence.ts            # IndexedDB load/save/clear
+│       ├── persistence.test.ts
+│       ├── persistGameStore.ts       # debounced save subscription
+│       └── persistGameStore.test.ts
 └── .husky/
     └── pre-commit
 ```

@@ -62,6 +62,7 @@ describe("<AudioRecorder />", () => {
       forward,
       reverse: reversed,
       durationMs: 500,
+      blob,
     });
     expect(await screen.findByRole("button", { name: /enregistrer/i })).toBeInTheDocument();
   });

@@ -42,6 +42,7 @@ const fakeRecording: Recording = {
   forward: { numberOfChannels: 1, length: 4 } as unknown as AudioBuffer,
   reverse: { numberOfChannels: 1, length: 4 } as unknown as AudioBuffer,
   durationMs: 100,
+  blob: new Blob(),
 };
 const fakeCtx = {} as AudioContext;
 

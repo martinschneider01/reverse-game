@@ -105,6 +105,7 @@ describe("<RecordingAPhase />", () => {
       forward: fakeForward,
       reverse: fakeReversed,
       durationMs: 500,
+      blob: expect.any(Blob),
     });
   });
 
