@@ -37,6 +37,7 @@ function makeFakeRecorder(blob: Blob): Recorder {
     start: vi.fn(async () => {}),
     stop: vi.fn(async () => blob),
     cancel: vi.fn(),
+    getStream: vi.fn(() => null),
   };
 }
 

@@ -12,7 +12,8 @@ function makeFakeRecorder(blob: Blob): {
   const start = vi.fn(async () => {});
   const stop = vi.fn(async () => blob);
   const cancel = vi.fn();
-  return { recorder: { start, stop, cancel }, start, stop };
+  const getStream = vi.fn(() => null);
+  return { recorder: { start, stop, cancel, getStream }, start, stop };
 }
 
 describe("<AudioRecorder />", () => {
@@ -67,13 +68,17 @@ describe("<AudioRecorder />", () => {
 
   it("displays an error and a retry button when start() rejects (e.g. permission denied)", async () => {
     const user = userEvent.setup();
-    const recorderFactory = vi.fn(() => ({
-      start: vi.fn(async () => {
-        throw new Error("NotAllowedError");
-      }),
-      stop: vi.fn(),
-      cancel: vi.fn(),
-    }));
+    const recorderFactory = vi.fn(
+      () =>
+        ({
+          start: vi.fn(async () => {
+            throw new Error("NotAllowedError");
+          }),
+          stop: vi.fn(),
+          cancel: vi.fn(),
+          getStream: vi.fn(() => null),
+        }) satisfies Recorder,
+    );
 
     render(
       <AudioRecorder

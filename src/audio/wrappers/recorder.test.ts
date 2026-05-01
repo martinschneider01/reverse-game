@@ -200,4 +200,23 @@ describe("createRecorder", () => {
 
     expect(() => rec.cancel()).not.toThrow();
   });
+
+  it("getStream() returns null before start() and the live MediaStream while recording", async () => {
+    let stream: FakeMediaStream | null = null;
+    installFakeGetUserMedia(async () => {
+      stream = new FakeMediaStream();
+      return stream as unknown as MediaStream;
+    });
+    const rec = createRecorder({ maxDurationMs: 1000 });
+
+    expect(rec.getStream()).toBeNull();
+
+    await rec.start();
+    expect(rec.getStream()).toBe(stream);
+
+    const p = rec.stop();
+    await vi.runAllTimersAsync();
+    await p;
+    expect(rec.getStream()).toBeNull();
+  });
 });

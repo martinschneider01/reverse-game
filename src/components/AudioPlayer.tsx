@@ -17,7 +17,7 @@ export type AudioPlayerProps = {
 const MIN_RATE = 0.25;
 const MAX_RATE = 2;
 const SNAP_RANGE = 0.05;
-const WAVEFORM_BARS = 32;
+const WAVEFORM_BARS = 64;
 
 function snap(rate: number): number {
   return Math.abs(rate - 1) <= SNAP_RANGE ? 1 : rate;
@@ -106,8 +106,12 @@ export function AudioPlayer({
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
       }
+      // Stop audio so closing the × button or navigating to another phase
+      // doesn't leave the buffer playing in the background.
+      playerRef.current?.pause();
+      clearPlaying(playerId);
     };
-  }, []);
+  }, [clearPlaying, playerId]);
 
   function startTracking(): void {
     setPositionFrac(0);
@@ -176,7 +180,7 @@ export function AudioPlayer({
     <div className="audio-player">
       {onClose !== undefined && (
         <button type="button" className="audio-player-close" aria-label="Fermer" onClick={onClose}>
-          ×
+          <CloseIcon />
         </button>
       )}
 
@@ -269,6 +273,20 @@ function PauseIcon(): React.JSX.Element {
   return (
     <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
       <path d="M6 5h4v14H6zM14 5h4v14h-4z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function CloseIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path
+        d="M6 6l12 12M18 6L6 18"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        fill="none"
+      />
     </svg>
   );
 }

@@ -302,6 +302,45 @@
     gap: 0.75rem;
   }
 
+  .recorder-waveform {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1px;
+    height: 3rem;
+    background-color: var(--color-surface-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 0.375rem;
+    overflow: hidden;
+  }
+
+  .recorder-waveform-bar {
+    flex: 1;
+    background-color: var(--color-text-muted);
+    border-radius: 1px;
+    min-height: 8%;
+    opacity: 0.4;
+    transition: height 60ms linear;
+  }
+
+  .recorder-waveform-bar.recorder-waveform-bar-active {
+    background-color: var(--color-primary);
+    opacity: 1;
+  }
+
+  .recorder-waveform-playhead {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background-color: var(--color-primary);
+    box-shadow: 0 0 8px rgba(236, 72, 153, 0.6);
+    pointer-events: none;
+    transform: translateX(-1px);
+  }
+
   .button-row {
     display: flex;
     gap: 0.75rem;
@@ -410,25 +449,28 @@
 
   .audio-player-close {
     position: absolute;
-    top: -0.25rem;
-    right: -0.25rem;
-    background-color: var(--color-surface-elevated);
-    color: var(--color-text-muted);
-    border: 1px solid var(--color-border);
+    top: -0.875rem;
+    right: -0.875rem;
+    z-index: 1;
+    background-color: var(--color-danger);
+    color: var(--color-text);
+    border: 1px solid var(--color-danger);
     border-radius: 999px;
-    width: 1.75rem;
-    height: 1.75rem;
+    width: 2.25rem;
+    height: 2.25rem;
     min-height: 0;
     padding: 0;
-    font-size: 1.25rem;
+    font-size: 1.5rem;
     line-height: 1;
     display: flex;
     align-items: center;
     justify-content: center;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
   }
 
   .audio-player-close:hover {
-    background-color: var(--color-surface);
+    background-color: var(--color-primary-hover);
+    border-color: var(--color-primary-hover);
     color: var(--color-text);
   }
 
@@ -437,7 +479,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 2px;
+    gap: 1px;
     height: 3rem;
     background-color: var(--color-surface-elevated);
     border: 1px solid var(--color-border);

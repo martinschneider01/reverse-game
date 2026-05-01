@@ -375,7 +375,7 @@ describe("<AudioPlayer />", () => {
       <AudioPlayer recording={fakeRecording} audioContext={fakeCtx} playerFactory={() => player} />,
     );
 
-    expect(container.querySelectorAll(".audio-player-bar").length).toBe(32);
+    expect(container.querySelectorAll(".audio-player-bar").length).toBe(64);
   });
 });
 

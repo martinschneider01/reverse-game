@@ -2,6 +2,7 @@ export type Recorder = {
   start: () => Promise<void>;
   stop: () => Promise<Blob>;
   cancel: () => void;
+  getStream: () => MediaStream | null;
 };
 
 export type RecorderOptions = {
@@ -133,6 +134,10 @@ export function createRecorder(options: RecorderOptions): Recorder {
         s.mediaRecorder.stop();
       }
       stopTracks(s);
+    },
+
+    getStream() {
+      return session !== null && session.active ? session.stream : null;
     },
   };
 }
