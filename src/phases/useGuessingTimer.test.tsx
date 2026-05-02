@@ -13,7 +13,7 @@ const fakeRecording: Recording = {
 };
 
 function Probe({ now, onState }: { now: () => number; onState: (ms: number | null) => void }) {
-  const { remainingMs } = useGuessingTimer(now);
+  const { remainingMs } = useGuessingTimer({ now });
   onState(remainingMs);
   return null;
 }
@@ -124,6 +124,102 @@ describe("useGuessingTimer", () => {
 
     rerender(<Probe now={() => 1500} onState={(v) => (last = v)} />);
     expect(last).toBeNull();
+  });
+});
+
+describe("useGuessingTimer — activePhases", () => {
+  it("activates on the phases passed in activePhases (Ouzbek P2)", () => {
+    useGameStore.setState({
+      phase: "guessingP2",
+      mode: "ouzbek",
+      challengeRules: { timerMs: 60_000, notesEnabled: true, listenLimit: null },
+      guessingStartedAt: 0,
+    });
+    let last: number | null | undefined;
+    function P2Probe({
+      now,
+      onState,
+    }: {
+      now: () => number;
+      onState: (ms: number | null) => void;
+    }) {
+      const { remainingMs } = useGuessingTimer({
+        now,
+        activePhases: new Set(["guessingP2"]),
+      });
+      onState(remainingMs);
+      return null;
+    }
+    render(<P2Probe now={() => 5000} onState={(v) => (last = v)} />);
+    expect(last).toBe(55_000);
+  });
+
+  it("returns null when in a non-active phase even with timer set", () => {
+    useGameStore.setState({
+      phase: "guessing",
+      challengeRules: { timerMs: 60_000, notesEnabled: true, listenLimit: null },
+      guessingStartedAt: 0,
+    });
+    let last: number | null | undefined;
+    function P2Only({ now, onState }: { now: () => number; onState: (ms: number | null) => void }) {
+      const { remainingMs } = useGuessingTimer({
+        now,
+        activePhases: new Set(["guessingP2"]),
+      });
+      onState(remainingMs);
+      return null;
+    }
+    render(<P2Only now={() => 5000} onState={(v) => (last = v)} />);
+    expect(last).toBeNull();
+  });
+
+  it("forces P2 → handoffP3 when the timer expires (via forceReveal store routing)", () => {
+    useGameStore.setState({
+      phase: "guessingP2",
+      mode: "ouzbek",
+      ouzbekRecordingP1: fakeRecording,
+      challengeRules: { timerMs: 60_000, notesEnabled: true, listenLimit: null },
+      guessingStartedAt: 0,
+    });
+    let nowMs = 0;
+    function P2Probe({ now }: { now: () => number }) {
+      useGuessingTimer({ now, activePhases: new Set(["guessingP2"]) });
+      return null;
+    }
+    render(<P2Probe now={() => nowMs} />);
+    expect(useGameStore.getState().phase).toBe("guessingP2");
+
+    act(() => {
+      nowMs = 60_000;
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(useGameStore.getState().phase).toBe("handoffP3");
+    expect(useGameStore.getState().guessingStartedAt).toBeNull();
+  });
+
+  it("forces P4 → revealOuzbek when the timer expires", () => {
+    useGameStore.setState({
+      phase: "guessingP4",
+      mode: "ouzbek",
+      ouzbekRecordingP3: fakeRecording,
+      challengeRules: { timerMs: 60_000, notesEnabled: true, listenLimit: null },
+      guessingStartedAt: 0,
+    });
+    let nowMs = 0;
+    function P4Probe({ now }: { now: () => number }) {
+      useGuessingTimer({ now, activePhases: new Set(["guessingP4"]) });
+      return null;
+    }
+    render(<P4Probe now={() => nowMs} />);
+    expect(useGameStore.getState().phase).toBe("guessingP4");
+
+    act(() => {
+      nowMs = 60_000;
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(useGameStore.getState().phase).toBe("revealOuzbek");
   });
 });
 

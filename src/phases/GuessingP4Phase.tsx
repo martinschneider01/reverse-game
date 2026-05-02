@@ -1,6 +1,10 @@
 import { AudioPlayer } from "@/components/AudioPlayer";
 import type { Player } from "@/audio/wrappers/player";
+import type { Phase } from "@/store/gameStore";
 import { useGameStore } from "@/store/gameStore";
+import { useGuessingTimer, formatRemaining } from "./useGuessingTimer";
+
+const TIMER_ACTIVE_PHASES: ReadonlySet<Phase> = new Set<Phase>(["guessingP4"]);
 
 export type GuessingP4PhaseProps = {
   audioContextFactory: () => AudioContext;
@@ -9,7 +13,17 @@ export type GuessingP4PhaseProps = {
 
 export function GuessingP4Phase({ audioContextFactory, playerFactory }: GuessingP4PhaseProps) {
   const ouzbekRecordingP3 = useGameStore((s) => s.ouzbekRecordingP3);
+  const listenCount = useGameStore((s) => s.listenCount);
+  const challengeRules = useGameStore((s) => s.challengeRules);
+  const incrementListenCount = useGameStore((s) => s.incrementListenCount);
   const revealOuzbekChain = useGameStore((s) => s.revealOuzbekChain);
+
+  const listenLimit = challengeRules?.listenLimit ?? null;
+  const limitReached = listenLimit !== null && listenCount >= listenLimit;
+  const counterText =
+    listenLimit !== null ? `Écoutes : ${listenCount} / ${listenLimit}` : `Écoutes : ${listenCount}`;
+
+  const { remainingMs } = useGuessingTimer({ activePhases: TIMER_ACTIVE_PHASES });
 
   if (ouzbekRecordingP3 === null) {
     return (
@@ -30,14 +44,27 @@ export function GuessingP4Phase({ audioContextFactory, playerFactory }: Guessing
         compris. Quand J1 confirme la chaîne, révélez le résultat.
       </p>
 
+      {remainingMs !== null && (
+        <p aria-label="Temps restant" aria-live="polite" className="counter-chip timer-chip">
+          Temps : {formatRemaining(remainingMs)}
+        </p>
+      )}
+
       <div className="card">
         <h3>Enregistrement de J3 (à l'envers)</h3>
         <AudioPlayer
           recording={ouzbekRecordingP3}
           audioContext={ctx}
           lockDirection="reverse"
+          disabled={limitReached}
           playerFactory={playerFactory}
+          onPlay={incrementListenCount}
         />
+        {challengeRules !== null && (
+          <p aria-label="Compteur d'écoutes" className="counter-chip">
+            {counterText}
+          </p>
+        )}
       </div>
 
       <button type="button" onClick={revealOuzbekChain}>

@@ -4,6 +4,7 @@ export function MenuPhase() {
   const startGame = useGameStore((s) => s.startGame);
   const startChallenge = useGameStore((s) => s.startChallenge);
   const startOuzbek = useGameStore((s) => s.startOuzbek);
+  const startOuzbekChallenge = useGameStore((s) => s.startOuzbekChallenge);
   return (
     <section className="menu-screen">
       <div className="brand">
@@ -25,6 +26,9 @@ export function MenuPhase() {
         </button>
         <button type="button" className="cta-secondary" onClick={startOuzbek}>
           Mode Ouzbek
+        </button>
+        <button type="button" className="cta-secondary" onClick={startOuzbekChallenge}>
+          Ouzbek Challenge
         </button>
       </div>
 

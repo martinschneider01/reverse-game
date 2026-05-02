@@ -9,6 +9,7 @@ import { computePeakGain } from "@/audio/peakGain";
 import type { Recording } from "@/audio/recording";
 import { MenuPhase } from "@/phases/MenuPhase";
 import { ChallengeConfigPhase } from "@/phases/ChallengeConfigPhase";
+import { OuzbekChallengeConfigPhase } from "@/phases/OuzbekChallengeConfigPhase";
 import { PermissionPhase } from "@/phases/PermissionPhase";
 import { PermissionDeniedPhase } from "@/phases/PermissionDeniedPhase";
 import { RecordingAPhase } from "@/phases/RecordingAPhase";
@@ -21,8 +22,20 @@ import { RecordingP3Phase } from "@/phases/RecordingP3Phase";
 import { GuessingP4Phase } from "@/phases/GuessingP4Phase";
 import { RevealOuzbekPhase } from "@/phases/RevealOuzbekPhase";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import type { PersistedPhase } from "@/store/persistence";
 
 const HAS_IDB = typeof indexedDB !== "undefined";
+
+// Mode 1 / Challenge: timer expiry skips confirmEnd → reveal.
+// Ouzbek Challenge: P2 → handoffP3 (chain continues with partial note);
+// P4 → revealOuzbek (cf. PROJECT.md §3.13). Returns null when the persisted
+// phase isn't timer-bearing.
+function timerExpiryTarget(phase: PersistedPhase): PersistedPhase | null {
+  if (phase === "guessing" || phase === "confirmEnd") return "reveal";
+  if (phase === "guessingP2") return "handoffP3";
+  if (phase === "guessingP4") return "revealOuzbek";
+  return null;
+}
 
 async function rehydrateRecording(p: PersistedRecording, ctx: AudioContext): Promise<Recording> {
   // decodeAudioData detaches its input ArrayBuffer; clone via .arrayBuffer()
@@ -85,17 +98,18 @@ export function App() {
             ? await rehydrateRecording(persisted.ouzbekRecordingP3, ctx)
             : null;
         if (cancelled) return;
-        // Timer expiry on hydration: if a Mode Challenge timer ran out while
-        // the PWA was unloaded, jump straight to reveal (cf. §3.12).
+        // Timer expiry on hydration: if a Challenge timer ran out while the
+        // PWA was unloaded, advance the chain (cf. §3.12 + §3.13).
         const timerMs = persisted.challengeRules?.timerMs ?? null;
         const startedAt = persisted.guessingStartedAt;
+        const expiryTarget = timerExpiryTarget(persisted.phase);
         const expired =
           timerMs !== null &&
           startedAt !== null &&
-          (persisted.phase === "guessing" || persisted.phase === "confirmEnd") &&
+          expiryTarget !== null &&
           Date.now() - startedAt >= timerMs;
         useGameStore.setState({
-          phase: expired ? "reveal" : persisted.phase,
+          phase: expired && expiryTarget !== null ? expiryTarget : persisted.phase,
           mode: persisted.mode,
           originalRecording: original,
           guessRecording: guess,
@@ -137,6 +151,7 @@ export function App() {
     <main>
       {phase === "menu" && <MenuPhase />}
       {phase === "challengeConfig" && <ChallengeConfigPhase />}
+      {phase === "ouzbekChallengeConfig" && <OuzbekChallengeConfigPhase />}
       {phase === "permission" && <PermissionPhase />}
       {phase === "permissionDenied" && <PermissionDeniedPhase />}
       {phase === "recordingA" && <RecordingAPhase audioContextFactory={getAudioContext} />}

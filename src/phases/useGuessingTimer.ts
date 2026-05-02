@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useGameStore } from "@/store/gameStore";
+import { useGameStore, type Phase } from "@/store/gameStore";
 
 const TICK_MS = 250;
 
@@ -8,18 +8,32 @@ export type GuessingTimerState = {
   remainingMs: number | null;
 };
 
-/** Wall-clock countdown for Mode Challenge. Reads `challengeRules.timerMs` and
- *  `guessingStartedAt` from the store, ticks every TICK_MS, and dispatches
- *  `forceReveal()` when the deadline passes. Pausing during re-listens is not
- *  supported — wall-clock is intentional (cf. §3.12). */
-export function useGuessingTimer(now: () => number = Date.now): GuessingTimerState {
+export type GuessingTimerOptions = {
+  /** Override the wall-clock source. Tests use this to simulate elapsed time. */
+  now?: () => number;
+  /** Phases the timer is active in. Defaults to Mode 1 / Challenge phases.
+   *  Ouzbek phases pass their own set ({"guessingP2"} or {"guessingP4"}). */
+  activePhases?: ReadonlySet<Phase>;
+};
+
+const DEFAULT_ACTIVE_PHASES: ReadonlySet<Phase> = new Set<Phase>(["guessing", "confirmEnd"]);
+
+/** Wall-clock countdown for Mode Challenge (and its Ouzbek variant). Reads
+ *  `challengeRules.timerMs` and `guessingStartedAt` from the store, ticks every
+ *  TICK_MS, and dispatches `forceReveal()` when the deadline passes — the
+ *  store routes that to the right next phase based on the current phase
+ *  (cf. PROJECT.md §3.12 + §3.13). Pausing during re-listens is intentional
+ *  (cf. §3.12). */
+export function useGuessingTimer(options: GuessingTimerOptions = {}): GuessingTimerState {
+  const now = options.now ?? Date.now;
+  const activePhases = options.activePhases ?? DEFAULT_ACTIVE_PHASES;
+
   const timerMs = useGameStore((s) => s.challengeRules?.timerMs ?? null);
   const startedAt = useGameStore((s) => s.guessingStartedAt);
   const phase = useGameStore((s) => s.phase);
   const forceReveal = useGameStore((s) => s.forceReveal);
 
-  const active =
-    timerMs !== null && startedAt !== null && (phase === "guessing" || phase === "confirmEnd");
+  const active = timerMs !== null && startedAt !== null && activePhases.has(phase);
 
   function compute(): number | null {
     if (!active || timerMs === null || startedAt === null) return null;

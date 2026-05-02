@@ -24,4 +24,12 @@ describe("App", () => {
     render(<App />);
     expect(screen.getByRole("button", { name: /lancer la partie/i })).toBeInTheDocument();
   });
+
+  it("renders the OuzbekChallengeConfig phase when the store phase is ouzbekChallengeConfig", () => {
+    useGameStore.setState({ phase: "ouzbekChallengeConfig", mode: "ouzbek" });
+    render(<App />);
+    expect(screen.getByRole("heading", { name: /configurer les règles/i })).toBeInTheDocument();
+    // Notes fieldset is intentionally absent (the note is the pivot of Ouzbek).
+    expect(screen.queryByRole("radiogroup", { name: /^notes$/i })).not.toBeInTheDocument();
+  });
 });

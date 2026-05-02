@@ -206,10 +206,36 @@ describe("gameStore", () => {
       expect(useGameStore.getState().phase).toBe("reveal");
     });
 
-    it("is a no-op outside guessing | confirmEnd", () => {
+    it("is a no-op outside guessing | confirmEnd | guessingP2 | guessingP4", () => {
       useGameStore.setState({ phase: "menu" });
       useGameStore.getState().forceReveal();
       expect(useGameStore.getState().phase).toBe("menu");
+    });
+
+    it("transitions guessingP2 → handoffP3 (Ouzbek timer expiry on P2)", () => {
+      useGameStore.setState({
+        phase: "guessingP2",
+        mode: "ouzbek",
+        ouzbekRecordingP1: fakeRecording,
+        guessingStartedAt: 1234,
+      });
+      useGameStore.getState().forceReveal();
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("handoffP3");
+      expect(s.guessingStartedAt).toBeNull();
+    });
+
+    it("transitions guessingP4 → revealOuzbek (Ouzbek timer expiry on P4)", () => {
+      useGameStore.setState({
+        phase: "guessingP4",
+        mode: "ouzbek",
+        ouzbekRecordingP3: fakeRecording,
+        guessingStartedAt: 1234,
+      });
+      useGameStore.getState().forceReveal();
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("revealOuzbek");
+      expect(s.guessingStartedAt).toBeNull();
     });
   });
 
@@ -449,6 +475,39 @@ describe("gameStore", () => {
     });
   });
 
+  describe("startOuzbekChallenge", () => {
+    it("transitions menu → ouzbekChallengeConfig and sets mode to ouzbek", () => {
+      useGameStore.getState().startOuzbekChallenge();
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("ouzbekChallengeConfig");
+      expect(s.mode).toBe("ouzbek");
+    });
+
+    it("does not write challengeRules — that's confirmChallengeRules' job", () => {
+      useGameStore.getState().startOuzbekChallenge();
+      expect(useGameStore.getState().challengeRules).toBeNull();
+    });
+
+    it("is a no-op when phase is not menu", () => {
+      useGameStore.setState({ phase: "recordingA" });
+      useGameStore.getState().startOuzbekChallenge();
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("recordingA");
+      expect(s.mode).toBe("mode1");
+    });
+  });
+
+  describe("confirmChallengeRules — Ouzbek path", () => {
+    it("transitions ouzbekChallengeConfig → permission and stores the rules", () => {
+      useGameStore.setState({ phase: "ouzbekChallengeConfig", mode: "ouzbek" });
+      useGameStore.getState().confirmChallengeRules(sampleRules);
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("permission");
+      expect(s.mode).toBe("ouzbek");
+      expect(s.challengeRules).toEqual(sampleRules);
+    });
+  });
+
   describe("startGame / startChallenge — mode reset", () => {
     it("startGame sets mode to mode1 (covers menu re-entry after Ouzbek)", () => {
       useGameStore.setState({ phase: "menu", mode: "ouzbek" });
@@ -510,6 +569,25 @@ describe("gameStore", () => {
       expect(useGameStore.getState().phase).toBe("menu");
     });
 
+    it("startGuessingP2 sets guessingStartedAt when challengeRules carries a timer", () => {
+      const t0 = Date.now();
+      useGameStore.setState({
+        phase: "handoffP2",
+        mode: "ouzbek",
+        challengeRules: { timerMs: 60_000, notesEnabled: true, listenLimit: null },
+      });
+      useGameStore.getState().startGuessingP2();
+      const s = useGameStore.getState();
+      expect(s.guessingStartedAt).not.toBeNull();
+      expect(s.guessingStartedAt!).toBeGreaterThanOrEqual(t0);
+    });
+
+    it("startGuessingP2 leaves guessingStartedAt null without a timer rule", () => {
+      useGameStore.setState({ phase: "handoffP2", mode: "ouzbek", challengeRules: null });
+      useGameStore.getState().startGuessingP2();
+      expect(useGameStore.getState().guessingStartedAt).toBeNull();
+    });
+
     it("setOuzbekNoteP2 writes when in guessingP2", () => {
       useGameStore.setState({ phase: "guessingP2", mode: "ouzbek" });
       useGameStore.getState().setOuzbekNoteP2("ma transcription");
@@ -532,6 +610,43 @@ describe("gameStore", () => {
       const s = useGameStore.getState();
       expect(s.phase).toBe("handoffP3");
       expect(s.ouzbekNoteP2).toBe("transcription");
+    });
+
+    it("finishGuessingP2 resets listenCount and guessingStartedAt so P4 starts fresh", () => {
+      useGameStore.setState({
+        phase: "guessingP2",
+        mode: "ouzbek",
+        listenCount: 4,
+        guessingStartedAt: 1234,
+      });
+      useGameStore.getState().finishGuessingP2();
+      const s = useGameStore.getState();
+      expect(s.listenCount).toBe(0);
+      expect(s.guessingStartedAt).toBeNull();
+    });
+
+    it("startGuessingP4 sets guessingStartedAt when challengeRules carries a timer", () => {
+      const t0 = Date.now();
+      useGameStore.setState({
+        phase: "handoffP4",
+        mode: "ouzbek",
+        challengeRules: { timerMs: 60_000, notesEnabled: true, listenLimit: null },
+      });
+      useGameStore.getState().startGuessingP4();
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("guessingP4");
+      expect(s.guessingStartedAt).not.toBeNull();
+      expect(s.guessingStartedAt!).toBeGreaterThanOrEqual(t0);
+    });
+
+    it("revealOuzbekChain clears guessingStartedAt", () => {
+      useGameStore.setState({
+        phase: "guessingP4",
+        mode: "ouzbek",
+        guessingStartedAt: 1234,
+      });
+      useGameStore.getState().revealOuzbekChain();
+      expect(useGameStore.getState().guessingStartedAt).toBeNull();
     });
 
     it("startRecordingP3 transitions handoffP3 → recordingP3", () => {
@@ -589,6 +704,29 @@ describe("gameStore", () => {
       expect(s.ouzbekRecordingP1).toBeNull();
       expect(s.ouzbekNoteP2).toBe("");
       expect(s.ouzbekRecordingP3).toBeNull();
+    });
+
+    it("newOuzbekRound resets listenCount and guessingStartedAt", () => {
+      useGameStore.setState({
+        phase: "revealOuzbek",
+        mode: "ouzbek",
+        listenCount: 4,
+        guessingStartedAt: 1234,
+      });
+      useGameStore.getState().newOuzbekRound();
+      const s = useGameStore.getState();
+      expect(s.listenCount).toBe(0);
+      expect(s.guessingStartedAt).toBeNull();
+    });
+
+    it("newOuzbekRound preserves challengeRules (chained Ouzbek Challenge rounds)", () => {
+      useGameStore.setState({
+        phase: "revealOuzbek",
+        mode: "ouzbek",
+        challengeRules: sampleRules,
+      });
+      useGameStore.getState().newOuzbekRound();
+      expect(useGameStore.getState().challengeRules).toEqual(sampleRules);
     });
 
     it("newOuzbekRound is a no-op outside revealOuzbek", () => {

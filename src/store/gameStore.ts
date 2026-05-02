@@ -4,6 +4,7 @@ import type { Recording } from "@/audio/recording";
 export type Phase =
   | "menu"
   | "challengeConfig"
+  | "ouzbekChallengeConfig"
   | "permission"
   | "permissionDenied"
   | "recordingA"
@@ -62,6 +63,7 @@ export type GameState = {
   startChallenge: () => void;
   confirmChallengeRules: (rules: ChallengeRules) => void;
   startOuzbek: () => void;
+  startOuzbekChallenge: () => void;
   permissionGranted: () => void;
   permissionDenied: () => void;
   retryPermission: () => void;
@@ -94,6 +96,7 @@ type ActionKey =
   | "startChallenge"
   | "confirmChallengeRules"
   | "startOuzbek"
+  | "startOuzbekChallenge"
   | "permissionGranted"
   | "permissionDenied"
   | "retryPermission"
@@ -143,11 +146,16 @@ export const useGameStore = create<GameState>((set) => ({
 
   confirmChallengeRules: (rules) =>
     set((s) =>
-      s.phase === "challengeConfig" ? { phase: "permission", challengeRules: rules } : {},
+      s.phase === "challengeConfig" || s.phase === "ouzbekChallengeConfig"
+        ? { phase: "permission", challengeRules: rules }
+        : {},
     ),
 
   startOuzbek: () =>
     set((s) => (s.phase === "menu" ? { phase: "permission", mode: "ouzbek" } : {})),
+
+  startOuzbekChallenge: () =>
+    set((s) => (s.phase === "menu" ? { phase: "ouzbekChallengeConfig", mode: "ouzbek" } : {})),
 
   permissionGranted: () =>
     set((s) => {
@@ -187,11 +195,21 @@ export const useGameStore = create<GameState>((set) => ({
     set((s) => (s.phase === "confirmEnd" ? { phase: "reveal", guessingStartedAt: null } : {})),
 
   forceReveal: () =>
-    set((s) =>
-      s.phase === "guessing" || s.phase === "confirmEnd"
-        ? { phase: "reveal", guessingStartedAt: null }
-        : {},
-    ),
+    set((s) => {
+      // Mode 1 / Challenge: timer expiry skips confirmEnd, jumps to reveal.
+      if (s.phase === "guessing" || s.phase === "confirmEnd") {
+        return { phase: "reveal", guessingStartedAt: null };
+      }
+      // Ouzbek Challenge: timer in P2 advances the chain to handoffP3 with
+      // whatever note J2 typed so far; timer in P4 short-circuits to reveal.
+      if (s.phase === "guessingP2") {
+        return { phase: "handoffP3", guessingStartedAt: null };
+      }
+      if (s.phase === "guessingP4") {
+        return { phase: "revealOuzbek", guessingStartedAt: null };
+      }
+      return {};
+    }),
 
   newRound: () =>
     set((s) =>
@@ -214,11 +232,23 @@ export const useGameStore = create<GameState>((set) => ({
       s.phase === "recordingP1" ? { phase: "handoffP2", ouzbekRecordingP1: recording } : {},
     ),
 
-  startGuessingP2: () => set((s) => (s.phase === "handoffP2" ? { phase: "guessingP2" } : {})),
+  startGuessingP2: () =>
+    set((s) => {
+      if (s.phase !== "handoffP2") return {};
+      const startedAt = s.challengeRules?.timerMs != null ? Date.now() : null;
+      return { phase: "guessingP2", guessingStartedAt: startedAt };
+    }),
 
   setOuzbekNoteP2: (note) => set((s) => (s.phase === "guessingP2" ? { ouzbekNoteP2: note } : {})),
 
-  finishGuessingP2: () => set((s) => (s.phase === "guessingP2" ? { phase: "handoffP3" } : {})),
+  finishGuessingP2: () =>
+    set((s) =>
+      s.phase === "guessingP2"
+        ? // Reset listenCount so P4 starts with a fresh budget when the same
+          // listenLimit rule applies to both guessing phases (cf. PROJECT.md §3.13).
+          { phase: "handoffP3", guessingStartedAt: null, listenCount: 0 }
+        : {},
+    ),
 
   startRecordingP3: () => set((s) => (s.phase === "handoffP3" ? { phase: "recordingP3" } : {})),
 
@@ -227,9 +257,17 @@ export const useGameStore = create<GameState>((set) => ({
       s.phase === "recordingP3" ? { phase: "handoffP4", ouzbekRecordingP3: recording } : {},
     ),
 
-  startGuessingP4: () => set((s) => (s.phase === "handoffP4" ? { phase: "guessingP4" } : {})),
+  startGuessingP4: () =>
+    set((s) => {
+      if (s.phase !== "handoffP4") return {};
+      const startedAt = s.challengeRules?.timerMs != null ? Date.now() : null;
+      return { phase: "guessingP4", guessingStartedAt: startedAt };
+    }),
 
-  revealOuzbekChain: () => set((s) => (s.phase === "guessingP4" ? { phase: "revealOuzbek" } : {})),
+  revealOuzbekChain: () =>
+    set((s) =>
+      s.phase === "guessingP4" ? { phase: "revealOuzbek", guessingStartedAt: null } : {},
+    ),
 
   newOuzbekRound: () =>
     set((s) =>
@@ -239,6 +277,8 @@ export const useGameStore = create<GameState>((set) => ({
             ouzbekRecordingP1: null,
             ouzbekNoteP2: "",
             ouzbekRecordingP3: null,
+            listenCount: 0,
+            guessingStartedAt: null,
           }
         : {},
     ),

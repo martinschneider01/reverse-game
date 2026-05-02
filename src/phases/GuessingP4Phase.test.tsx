@@ -66,4 +66,75 @@ describe("<GuessingP4Phase />", () => {
     );
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
+
+  describe("Challenge rules", () => {
+    it("does not render a listen counter when no challengeRules are set (vanilla Ouzbek)", () => {
+      useGameStore.setState({ challengeRules: null });
+      render(
+        <GuessingP4Phase
+          audioContextFactory={audioContextFactory}
+          playerFactory={makeFakePlayer}
+        />,
+      );
+      expect(screen.queryByLabelText(/compteur d'écoutes/i)).not.toBeInTheDocument();
+    });
+
+    it("renders the listen counter and its limit when listenLimit is set", () => {
+      useGameStore.setState({
+        challengeRules: { timerMs: null, notesEnabled: true, listenLimit: 3 },
+        listenCount: 2,
+      });
+      render(
+        <GuessingP4Phase
+          audioContextFactory={audioContextFactory}
+          playerFactory={makeFakePlayer}
+        />,
+      );
+      expect(screen.getByLabelText(/compteur d'écoutes/i)).toHaveTextContent(/Écoutes : 2 \/ 3/);
+    });
+
+    it("disables reverse playback when listen limit is reached", () => {
+      useGameStore.setState({
+        challengeRules: { timerMs: null, notesEnabled: true, listenLimit: 3 },
+        listenCount: 3,
+      });
+      render(
+        <GuessingP4Phase
+          audioContextFactory={audioContextFactory}
+          playerFactory={makeFakePlayer}
+        />,
+      );
+      expect(screen.getByRole("button", { name: /lecture à l'envers/i })).toBeDisabled();
+    });
+
+    it("clicking play increments the listen count", async () => {
+      useGameStore.setState({
+        challengeRules: { timerMs: null, notesEnabled: true, listenLimit: 3 },
+        listenCount: 0,
+      });
+      const user = userEvent.setup();
+      render(
+        <GuessingP4Phase
+          audioContextFactory={audioContextFactory}
+          playerFactory={makeFakePlayer}
+        />,
+      );
+      await user.click(screen.getByRole("button", { name: /lecture à l'envers/i }));
+      expect(useGameStore.getState().listenCount).toBe(1);
+    });
+
+    it("renders the timer chip when a timer rule is active", () => {
+      useGameStore.setState({
+        challengeRules: { timerMs: 60_000, notesEnabled: true, listenLimit: null },
+        guessingStartedAt: Date.now(),
+      });
+      render(
+        <GuessingP4Phase
+          audioContextFactory={audioContextFactory}
+          playerFactory={makeFakePlayer}
+        />,
+      );
+      expect(screen.getByLabelText(/temps restant/i)).toBeInTheDocument();
+    });
+  });
 });

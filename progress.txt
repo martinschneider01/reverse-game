@@ -3024,3 +3024,167 @@ Notes pour le prochain agent
      un toggle "afficher les notes" dépendant de challengeRules,
      copier le pattern de RevealPhase plutôt qu'extraire un
      RevealCommon.
+
+
+2026-05-02 — Issue #32 (Mode Téléphone Ouzbek Challenge — config + application des règles)
+
+Dernière issue Ouzbek. Combine Mode Challenge (#26 schéma)
+et Mode Ouzbek (#27 tracer bullet) : nouvelle entrée menu
+"Ouzbek Challenge" → écran de config (timer + ré-écoutes,
+notes intentionnellement absente) → flow Ouzbek 4-joueurs
+avec règles appliquées à guessingP2 ET guessingP4.
+
+Décisions de triage prises au démarrage (issue les listait
+"à confirmer pendant la triage") :
+
+ - Notes activées/désactivées : retirée de la config Ouzbek.
+   Pourquoi : la note de J2 est le pivot du jeu ; J3 enregistre
+   en lisant cette note ; la désactiver casserait la chaîne.
+   Décision = forcer notesEnabled=true en interne (le chip
+   "Désactivées" n'est pas rendu plutôt que grisé — code mort
+   évité).
+ - Timer : appliqué à guessingP2 ET guessingP4 (pas seulement
+   au devineur final). Pourquoi : le timer crée la même tension
+   pour le devineur (P4) que pour le transcripteur (P2). La
+   note partielle est conservée au timeout.
+ - Ré-écoutes : appliqué à guessingP2 ET guessingP4 (un seul
+   listenCount partagé qui se reset à finishGuessingP2, suivant
+   la reco PROJECT.md §3.13). P2 et P4 partent chacun avec une
+   fresh budget = listenLimit.
+ - Timer expiry behavior par phase :
+     guessingP2 timeout → handoffP3 (la chaîne avance avec la
+       note partielle, fidèle à l'esprit "Ouzbek") ;
+     guessingP4 timeout → revealOuzbek (game over, comme
+       Mode 1 timeout = reveal direct).
+
+Changements (fichiers de prod)
+
+src/store/gameStore.ts
+   - Phase: ajout de "ouzbekChallengeConfig".
+   - Action startOuzbekChallenge() : menu → ouzbekChallengeConfig,
+     mode='ouzbek'.
+   - confirmChallengeRules : accepte aussi la transition
+     ouzbekChallengeConfig → permission (un seul callsite
+     partagé, mode déjà discriminé via `mode`).
+   - startGuessingP2 : pose guessingStartedAt si timer rule ;
+     sinon null. Symétrique de finishRecordingA.
+   - startGuessingP4 : idem.
+   - finishGuessingP2 : reset listenCount à 0 et clear
+     guessingStartedAt (P4 démarre frais).
+   - revealOuzbekChain : clear guessingStartedAt.
+   - newOuzbekRound : reset listenCount + guessingStartedAt
+     (challengeRules préservé pour chainer plusieurs rounds).
+   - forceReveal : étendu pour router selon la phase courante :
+     guessingP2 → handoffP3, guessingP4 → revealOuzbek
+     (en plus de guessing|confirmEnd → reveal).
+
+src/phases/useGuessingTimer.ts
+   - Signature changée : useGuessingTimer(options?: {now?, activePhases?}).
+     activePhases défaut = {"guessing", "confirmEnd"} (rétro-compatible
+     pour GuessingPhase Mode 1).
+   - Ouzbek phases passent leur propre activePhases:
+     {"guessingP2"} ou {"guessingP4"}.
+   - Reste pur côté store : c'est forceReveal qui sait quoi faire
+     selon la phase courante (le hook est juste un dispatcher).
+
+src/phases/MenuPhase.tsx
+   - 4ème bouton "Ouzbek Challenge" sous "Mode Ouzbek".
+
+src/phases/OuzbekChallengeConfigPhase.tsx (nouveau)
+   - Dérivé de ChallengeConfigPhase mais SANS le fieldset notes.
+   - pickInitial() coerce notesEnabled à true même si stored
+     traîne un false (anti-corruption).
+   - Header : "Ouzbek Challenge — Les contraintes s'appliquent
+     à Joueur 2 (transcription) et Joueur 4 (devinage final)".
+   - Réutilise les presets timer/limit pour cohérence visuelle
+     avec ChallengeConfigPhase.
+
+src/phases/GuessingP2Phase.tsx
+   - Lit challengeRules + listenCount du store.
+   - useGuessingTimer({activePhases: {"guessingP2"}}) → affiche
+     un timer chip si timerMs!=null.
+   - AudioPlayer.disabled = limitReached.
+   - AudioPlayer.onPlay = incrementListenCount.
+   - Counter chip "Écoutes : X / N" rendu seulement si
+     challengeRules!=null (pas de pollution UI en Ouzbek vanilla).
+
+src/phases/GuessingP4Phase.tsx
+   - Symétrique de P2.
+
+src/App.tsx
+   - Render OuzbekChallengeConfigPhase quand
+     phase==="ouzbekChallengeConfig".
+   - timerExpiryTarget(phase) helper extrait : route
+     guessing|confirmEnd → reveal, guessingP2 → handoffP3,
+     guessingP4 → revealOuzbek. Utilisé par la rehydratation
+     IDB pour avancer la chaîne si timer expiré pendant lock
+     screen (symétrique du forceReveal en runtime).
+
+Tests ajoutés (5 fichiers, +34 tests, total 336)
+
+   - src/store/gameStore.test.ts : startOuzbekChallenge (3),
+     confirmChallengeRules Ouzbek path (1), startGuessingP2
+     timer (2), startGuessingP4 timer (1), finishGuessingP2
+     reset (1), revealOuzbekChain clears timer (1),
+     newOuzbekRound reset (2), forceReveal Ouzbek (2).
+   - src/phases/MenuPhase.test.tsx : "Ouzbek Challenge" button (1).
+     A aussi resserré /mode ouzbek/i → /^mode ouzbek$/i pour
+     éviter ambiguïté avec le nouveau bouton.
+   - src/phases/OuzbekChallengeConfigPhase.test.tsx (nouveau, 5) :
+     absence du fieldset notes, default → notesEnabled=true,
+     submit, cancel, rehydration coerce notesEnabled=true.
+   - src/phases/GuessingP2Phase.test.tsx + GuessingP4Phase.test.tsx :
+     5 tests chacun pour challenge rules — counter absent en
+     vanilla, X/N rendu avec limit, disabled à limit reached,
+     onPlay incrémente, timer chip présent quand timerMs!=null.
+   - src/phases/useGuessingTimer.test.tsx : 4 tests pour
+     activePhases — P2 active, non-active phase retourne null,
+     P2 timeout route vers handoffP3, P4 timeout route vers
+     revealOuzbek.
+   - src/App.test.tsx : ouzbekChallengeConfig phase rendue.
+
+Persistance (PROJECT.md §3.13)
+
+   - PersistedPhase n'inclut PAS ouzbekChallengeConfig (cohérent
+     avec challengeConfig — c'est un écran de configuration
+     reconfigurable, pas un état "engagé"). L'état IDB est
+     clear() automatiquement à l'entrée (snapshot retourne null).
+   - Aucun bump de version : tous les champs Ouzbek sont déjà
+     optionnels à la lecture (pattern établi par #27).
+   - timerExpiryTarget() gère la rehydratation après lock screen :
+     si on était en guessingP2/guessingP4 et que le timer a expiré
+     pendant que la PWA était unloaded, on avance directement à
+     handoffP3/revealOuzbek (cf. §3.13 "guessingStartedAt
+     wall-clock + persistance").
+
+Verification (toutes vertes)
+
+   - bun run typecheck → clean
+   - bun run lint → 0 warnings, 0 errors (95 rules, 68 files)
+   - bun run format:check → clean (69 files)
+   - bun run test → 336/336 passing across 32 test files
+     (était 302/302 — +34 tests, +1 fichier OuzbekChallengeConfigPhase)
+
+Notes pour le prochain agent
+
+   - Toutes les issues Ouzbek sont closes (#25, #27, #31, #32).
+     Le Mode Téléphone Ouzbek + sa variante Challenge sont en
+     production. Roadmap v0.4 done.
+   - Pas de duplication factorisée entre ChallengeConfigPhase
+     et OuzbekChallengeConfigPhase — c'est volontaire (cf.
+     PROJECT.md §3.7 + §6.3). Le fieldset "notes" diffère et
+     surtout les deux écrans pourraient diverger
+     indépendamment (presets différents, copy différente). Si
+     trois ou plus de variantes apparaissent un jour, factoriser.
+   - Le forceReveal action est désormais polymorphe par phase
+     courante (Mode 1 vs Ouzbek P2 vs Ouzbek P4). Le nom reste
+     "forceReveal" même si "advance to handoffP3" n'est pas
+     littéralement un "reveal" — sémantique : "le timer expire,
+     avance la machine à état au pas suivant". Renommer est
+     un refactor à scope plus large que cette slice.
+   - useGuessingTimer accepte maintenant des options
+     ({now?, activePhases?}). Tous les call sites sont migrés
+     (GuessingPhase utilise les défauts ; P2/P4 passent
+     activePhases). Si un futur mode introduit une autre
+     phase guessing, passer activePhases au lieu d'éditer
+     le hook.
