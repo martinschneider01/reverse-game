@@ -18,4 +18,10 @@ describe("App", () => {
     render(<App />);
     expect(screen.getByRole("button", { name: /réessayer/i })).toBeInTheDocument();
   });
+
+  it("renders the ChallengeConfig phase when the store phase is challengeConfig", () => {
+    useGameStore.setState({ phase: "challengeConfig" });
+    render(<App />);
+    expect(screen.getByRole("button", { name: /lancer la partie/i })).toBeInTheDocument();
+  });
 });

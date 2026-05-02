@@ -21,6 +21,12 @@ export type PersistedRecording = {
 
 export type PersistedPhase = "guessing" | "confirmEnd" | "reveal";
 
+export type PersistedChallengeRules = {
+  timerMs: number | null;
+  notesEnabled: boolean;
+  listenLimit: number | null;
+};
+
 export type PersistedState = {
   version: 1;
   phase: PersistedPhase;
@@ -28,6 +34,7 @@ export type PersistedState = {
   guessRecording: PersistedRecording | null;
   notes: string;
   listenCount: number;
+  challengeRules: PersistedChallengeRules | null;
 };
 
 type RawRecording = {
@@ -43,6 +50,8 @@ type RawState = {
   guessRecording: RawRecording | null;
   notes: string;
   listenCount: number;
+  // Optional: pre-Mode-Challenge saves don't carry this field. Read with `?? null`.
+  challengeRules?: PersistedChallengeRules | null;
 };
 
 async function toRaw(rec: PersistedRecording): Promise<RawRecording> {
@@ -103,6 +112,7 @@ export async function loadPersistedState(): Promise<PersistedState | null> {
       guessRecording: raw.guessRecording !== null ? fromRaw(raw.guessRecording) : null,
       notes: raw.notes,
       listenCount: raw.listenCount,
+      challengeRules: raw.challengeRules ?? null,
     };
   } catch {
     return null;
@@ -123,6 +133,7 @@ export async function savePersistedState(state: PersistedState): Promise<void> {
       guessRecording: state.guessRecording !== null ? await toRaw(state.guessRecording) : null,
       notes: state.notes,
       listenCount: state.listenCount,
+      challengeRules: state.challengeRules,
     };
   } catch {
     return;

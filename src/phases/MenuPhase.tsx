@@ -2,6 +2,7 @@ import { useGameStore } from "@/store/gameStore";
 
 export function MenuPhase() {
   const startGame = useGameStore((s) => s.startGame);
+  const startChallenge = useGameStore((s) => s.startChallenge);
   return (
     <section className="menu-screen">
       <div className="brand">
@@ -14,9 +15,14 @@ export function MenuPhase() {
         <p className="brand-tagline">Enregistre. Écoute à l'envers. Devine.</p>
       </div>
 
-      <button type="button" className="cta-primary" onClick={startGame}>
-        Nouvelle partie
-      </button>
+      <div className="menu-actions">
+        <button type="button" className="cta-primary" onClick={startGame}>
+          Nouvelle partie
+        </button>
+        <button type="button" className="cta-secondary" onClick={startChallenge}>
+          Mode Challenge
+        </button>
+      </div>
 
       <details className="menu-howto">
         <summary>Comment ça marche&nbsp;?</summary>

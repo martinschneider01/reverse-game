@@ -3,6 +3,7 @@ import type { Recording } from "@/audio/recording";
 
 export type Phase =
   | "menu"
+  | "challengeConfig"
   | "permission"
   | "permissionDenied"
   | "recordingA"
@@ -10,14 +11,33 @@ export type Phase =
   | "confirmEnd"
   | "reveal";
 
+export type ChallengeRules = {
+  /** Durée de la phase guessing en ms. null = pas de timer (comportement Mode 1). */
+  timerMs: number | null;
+  /** Si false, <NotesEditor /> n'est pas rendu et la section notes est absente du reveal. */
+  notesEnabled: boolean;
+  /** Plafond de ré-écoutes ; bouton "Écouter" désactivé quand listenCount >= listenLimit.
+   *  null = illimité (comportement Mode 1). */
+  listenLimit: number | null;
+};
+
+export const DEFAULT_CHALLENGE_RULES: ChallengeRules = {
+  timerMs: null,
+  notesEnabled: true,
+  listenLimit: null,
+};
+
 export type GameState = {
   phase: Phase;
   originalRecording: Recording | null;
   guessRecording: Recording | null;
   notes: string;
   listenCount: number;
+  challengeRules: ChallengeRules | null;
 
   startGame: () => void;
+  startChallenge: () => void;
+  confirmChallengeRules: (rules: ChallengeRules) => void;
   permissionGranted: () => void;
   permissionDenied: () => void;
   retryPermission: () => void;
@@ -34,6 +54,8 @@ export type GameState = {
 
 type ActionKey =
   | "startGame"
+  | "startChallenge"
+  | "confirmChallengeRules"
   | "permissionGranted"
   | "permissionDenied"
   | "retryPermission"
@@ -55,12 +77,20 @@ export const INITIAL_STATE: Slice = {
   guessRecording: null,
   notes: "",
   listenCount: 0,
+  challengeRules: null,
 };
 
 export const useGameStore = create<GameState>((set) => ({
   ...INITIAL_STATE,
 
   startGame: () => set((s) => (s.phase === "menu" ? { phase: "permission" } : {})),
+
+  startChallenge: () => set((s) => (s.phase === "menu" ? { phase: "challengeConfig" } : {})),
+
+  confirmChallengeRules: (rules) =>
+    set((s) =>
+      s.phase === "challengeConfig" ? { phase: "permission", challengeRules: rules } : {},
+    ),
 
   permissionGranted: () => set((s) => (s.phase === "permission" ? { phase: "recordingA" } : {})),
 

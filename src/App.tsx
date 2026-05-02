@@ -7,6 +7,7 @@ import { startGameStorePersistence } from "@/store/persistGameStore";
 import { reverseBuffer } from "@/audio/reverseBuffer";
 import type { Recording } from "@/audio/recording";
 import { MenuPhase } from "@/phases/MenuPhase";
+import { ChallengeConfigPhase } from "@/phases/ChallengeConfigPhase";
 import { PermissionPhase } from "@/phases/PermissionPhase";
 import { PermissionDeniedPhase } from "@/phases/PermissionDeniedPhase";
 import { RecordingAPhase } from "@/phases/RecordingAPhase";
@@ -63,6 +64,7 @@ export function App() {
           guessRecording: guess,
           notes: persisted.notes,
           listenCount: persisted.listenCount,
+          challengeRules: persisted.challengeRules,
         });
       } catch {
         // Hydration failed (corrupt blob, decode error). Fall back to menu.
@@ -93,6 +95,7 @@ export function App() {
   return (
     <main>
       {phase === "menu" && <MenuPhase />}
+      {phase === "challengeConfig" && <ChallengeConfigPhase />}
       {phase === "permission" && <PermissionPhase />}
       {phase === "permissionDenied" && <PermissionDeniedPhase />}
       {phase === "recordingA" && <RecordingAPhase audioContextFactory={getAudioContext} />}

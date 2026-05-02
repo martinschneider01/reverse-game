@@ -26,4 +26,11 @@ describe("<MenuPhase />", () => {
     await user.click(screen.getByRole("button", { name: /nouvelle partie/i }));
     expect(useGameStore.getState().phase).toBe("permission");
   });
+
+  it("clicking 'Mode Challenge' dispatches startChallenge and transitions to challengeConfig", async () => {
+    const user = userEvent.setup();
+    render(<MenuPhase />);
+    await user.click(screen.getByRole("button", { name: /mode challenge/i }));
+    expect(useGameStore.getState().phase).toBe("challengeConfig");
+  });
 });

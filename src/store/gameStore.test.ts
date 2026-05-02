@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { useGameStore, INITIAL_STATE } from "./gameStore";
+import { useGameStore, INITIAL_STATE, type ChallengeRules } from "./gameStore";
 import type { Recording } from "@/audio/recording";
+
+const sampleRules: ChallengeRules = {
+  timerMs: 60_000,
+  notesEnabled: false,
+  listenLimit: 3,
+};
 
 const fakeRecording: Recording = {
   forward: { length: 24000, sampleRate: 48000 } as unknown as AudioBuffer,
@@ -31,6 +37,43 @@ describe("gameStore", () => {
       expect(s.guessRecording).toBeNull();
       expect(s.notes).toBe("");
       expect(s.listenCount).toBe(0);
+      expect(s.challengeRules).toBeNull();
+    });
+  });
+
+  describe("startChallenge", () => {
+    it("transitions menu → challengeConfig", () => {
+      useGameStore.getState().startChallenge();
+      expect(useGameStore.getState().phase).toBe("challengeConfig");
+    });
+
+    it("does not write challengeRules — that's confirmChallengeRules' job", () => {
+      useGameStore.getState().startChallenge();
+      expect(useGameStore.getState().challengeRules).toBeNull();
+    });
+
+    it("is a no-op when phase is not menu", () => {
+      useGameStore.setState({ phase: "recordingA" });
+      useGameStore.getState().startChallenge();
+      expect(useGameStore.getState().phase).toBe("recordingA");
+    });
+  });
+
+  describe("confirmChallengeRules", () => {
+    it("transitions challengeConfig → permission and stores the rules", () => {
+      useGameStore.setState({ phase: "challengeConfig" });
+      useGameStore.getState().confirmChallengeRules(sampleRules);
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("permission");
+      expect(s.challengeRules).toEqual(sampleRules);
+    });
+
+    it("is a no-op when phase is not challengeConfig", () => {
+      useGameStore.setState({ phase: "menu" });
+      useGameStore.getState().confirmChallengeRules(sampleRules);
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("menu");
+      expect(s.challengeRules).toBeNull();
     });
   });
 
@@ -224,6 +267,16 @@ describe("gameStore", () => {
       expect(s.listenCount).toBe(0);
     });
 
+    it("preserves challengeRules — chaining rounds in Mode Challenge keeps the same config", () => {
+      useGameStore.setState({
+        phase: "reveal",
+        originalRecording: fakeRecording,
+        challengeRules: sampleRules,
+      });
+      useGameStore.getState().newRound();
+      expect(useGameStore.getState().challengeRules).toEqual(sampleRules);
+    });
+
     it("is a no-op outside the reveal phase", () => {
       useGameStore.setState({
         phase: "guessing",
@@ -246,6 +299,7 @@ describe("gameStore", () => {
         guessRecording: fakeRecording,
         notes: "scribbles",
         listenCount: 5,
+        challengeRules: sampleRules,
       });
       useGameStore.getState().backToMenu();
       const s = useGameStore.getState();
@@ -254,6 +308,7 @@ describe("gameStore", () => {
       expect(s.guessRecording).toBeNull();
       expect(s.notes).toBe("");
       expect(s.listenCount).toBe(0);
+      expect(s.challengeRules).toBeNull();
     });
 
     it("is idempotent when already in menu", () => {

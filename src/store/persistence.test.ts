@@ -16,6 +16,7 @@ function makeState(overrides: Partial<PersistedState> = {}): PersistedState {
     guessRecording: null,
     notes: "",
     listenCount: 0,
+    challengeRules: null,
     ...overrides,
   };
 }
@@ -66,5 +67,61 @@ describe("persistence", () => {
     const loaded = await loadPersistedState();
     expect(loaded?.guessRecording?.durationMs).toBe(200);
     expect(await loaded?.guessRecording?.blob.text()).toBe("xyz");
+  });
+
+  it("round-trips challengeRules so Mode Challenge survives a lock-screen", async () => {
+    const state = makeState({
+      challengeRules: { timerMs: 60_000, notesEnabled: false, listenLimit: 3 },
+    });
+    await savePersistedState(state);
+    const loaded = await loadPersistedState();
+    expect(loaded?.challengeRules).toEqual({
+      timerMs: 60_000,
+      notesEnabled: false,
+      listenLimit: 3,
+    });
+  });
+
+  it("loads challengeRules as null when absent from a pre-Mode-Challenge save", async () => {
+    // Simulate a save written before the challengeRules field existed.
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.open("reverso", 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains("state")) db.createObjectStore("state");
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction("state", "readwrite");
+        tx.objectStore("state").put(
+          {
+            version: 1,
+            phase: "guessing",
+            originalRecording: {
+              data: new ArrayBuffer(0),
+              mimeType: "audio/webm",
+              durationMs: 100,
+            },
+            guessRecording: null,
+            notes: "",
+            listenCount: 0,
+            // no challengeRules key
+          },
+          "current",
+        );
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => {
+          db.close();
+          reject(tx.error ?? new Error("seed failed"));
+        };
+      };
+      req.onerror = () => reject(req.error ?? new Error("open failed"));
+    });
+
+    const loaded = await loadPersistedState();
+    expect(loaded?.challengeRules).toBeNull();
   });
 });

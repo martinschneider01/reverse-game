@@ -2233,3 +2233,117 @@ Notes for next agent
      implementing and HITL feedback says one of those is wrong,
      update §3.12 + CHANGELOG.md before changing the code, not
      after — the design doc is the source of truth.
+
+================================================================
+2026-05-02 — issue #26 — Mode Challenge: skeleton + config screen
+
+Picked #26 over #25 (HITL design) because the previous agent just
+finished a HITL design slice (#24) and #26 directly consumes that
+design. Implementing the tracer bullet now also exposes any gaps
+in the §3.12 design while it's fresh — better than stacking
+another design slice on top. Both unblock 3 downstream issues.
+
+What landed
+   - ChallengeRules type + DEFAULT_CHALLENGE_RULES exported from
+     gameStore (timerMs/notesEnabled/listenLimit per §3.12).
+   - challengeRules: ChallengeRules | null on GameState.
+   - New phase 'challengeConfig' wired between menu and permission.
+   - Actions: startChallenge() (menu→challengeConfig, no rules
+     write yet), confirmChallengeRules(rules) (challengeConfig→
+     permission, writes rules). newRound preserves rules (round
+     chaining stays in same mode); backToMenu resets them via
+     INITIAL_STATE.
+   - Persistence: PersistedState extended with challengeRules.
+     Implementation choice: optional field with `?? null` fallback
+     instead of bumping version 1→2 (per §3.12 option (b)). Why:
+     single nullable field, no value transformation, migration
+     code would be pure ceremony. Trade-off documented in the
+     RawState type comment.
+   - persistGameStore snapshot includes challengeRules.
+   - App.tsx rehydrates challengeRules and routes 'challengeConfig'
+     to <ChallengeConfigPhase />.
+   - <ChallengeConfigPhase />: chip-group preset UI for the three
+     rules (presets per §3.12, format chosen for #26: 4 chips for
+     timer/limit, 2-button toggle for notes). Form has Cancel
+     (=backToMenu) and "Lancer la partie" (=confirmChallengeRules)
+     CTAs. Re-opens with stored rules pre-selected (handles
+     lock-screen rehydration mid-config).
+
+Key design decisions made within #26's scope (per §3.12 last block)
+   1. Preset chips, not sliders. Why: mobile thumb-friendly,
+      faster to scan, matches the values listed in §3.12. Sliders
+      add precision the game doesn't need.
+   2. Notes toggle is a 2-button chip group, not a switch element.
+      Why: visual symmetry with the other rule rows; chip-group
+      pattern reused.
+   3. <ConfirmDialog> NOT wrapped around the submit. Why: §3.12
+      says "option, pas obligation"; one less click on a screen
+      that's already explicit ("Lancer la partie" is unambiguous).
+   4. Form rehydrates from store.challengeRules on mount via
+      useState initializer. Why: if a user is mid-config and the
+      phone locks, IDB persists challengeRules: null (we're not in
+      a savable phase per §3.5), so this is mostly defensive — but
+      it also makes the chained-round case (next round in same mode)
+      arrive at the config screen with the previous rules selected
+      if we ever decide to route through it again.
+
+What is intentionally NOT done
+   - No timer ticking, no listen-limit enforcement, no NotesEditor
+     hiding. That's #28/#29/#30 — this is the tracer bullet that
+     proves the rules round-trip from menu→config→permission→…→reveal
+     and survive a refresh. A round started via "Mode Challenge"
+     today behaves identically to Mode 1 (defaults are all "off").
+   - No <ConfigScreen /> abstraction shared with Mode Ouzbek (#27).
+     §3.7 — pas d'abstraction prématurée. Will revisit when Ouzbek
+     Challenge (#32) shows actual duplication.
+   - Did NOT add guessingStartedAt to PersistedState. That field
+     is for the timer (#28) — adding it now would be premature
+     and complicate the schema change.
+
+Files changed
+   - src/store/gameStore.ts: ChallengeRules type, DEFAULT_…,
+     challengeRules slice, startChallenge / confirmChallengeRules
+     actions, 'challengeConfig' added to Phase enum.
+   - src/store/persistence.ts: PersistedChallengeRules type,
+     challengeRules in PersistedState, optional field on RawState.
+   - src/store/persistGameStore.ts: snapshot includes
+     challengeRules.
+   - src/App.tsx: rehydrate challengeRules, route challengeConfig.
+   - src/phases/MenuPhase.tsx: new "Mode Challenge" cta-secondary
+     button alongside "Nouvelle partie", wrapped in .menu-actions.
+   - src/phases/ChallengeConfigPhase.tsx: NEW component.
+   - src/index.css: .cta-secondary, .menu-actions, .challenge-…
+     and .chip / .chip-group / .chip-selected styles.
+   - Tests: gameStore (+ChallengeRules, +startChallenge,
+     +confirmChallengeRules, newRound preserves, backToMenu
+     resets), persistence (round-trip + missing-field fallback),
+     persistGameStore (challengeRules in snapshot), MenuPhase
+     (new button), App (route), ChallengeConfigPhase (NEW, 5
+     tests covering defaults / submit / cancel / rehydration).
+
+Verification
+   - bun run typecheck → clean
+   - bun run lint → 0 warnings, 0 errors (95 rules, 50 files)
+   - bun run format:check → clean (51 files)
+   - bun run test → 204/204 passing across 23 test files
+     (was 188/22 — added 16 tests, 1 new test file)
+
+Notes for next agent
+   - With #26 done, the natural next picks are the rule-application
+     slices: #28 (timer), #29 (notes off), #30 (ré-écoutes).
+     They're sibling slices and could be done in any order — pick
+     based on which seems cleanest. #28 is the heaviest (needs
+     guessingStartedAt persistence, decode timer expiry, wall-clock
+     resume) — leave it for a fresher session if you have a choice.
+   - #29 (notes off) is probably the cleanest tracer for the rule-
+     application pattern: read challengeRules in GuessingPhase /
+     RevealPhase, conditional render of <NotesEditor />. Should be
+     <100 LOC + tests.
+   - The persistence schema is "challengeRules optional field". If
+     #28 needs to add guessingStartedAt and you want to bump to
+     v2, that's the moment — bundle both fields in the migration.
+     Alternatively: same optional-field pattern. Document the call
+     in CHANGELOG.md.
+   - #25 (HITL design Mode Ouzbek) is still pending and would
+     unblock the v0.3 work. Probably alternate: do one rule-app
+     slice (#29), then #25.
