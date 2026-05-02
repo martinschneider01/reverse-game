@@ -163,6 +163,16 @@ describe("<RevealPhase />", () => {
     expect(screen.getAllByRole("button", { name: /lecture à l'endroit/i })).toHaveLength(2);
   });
 
+  it("renders a download button on each reveal player (#35)", () => {
+    render(
+      <RevealPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    // One on the original card, one on the guess card.
+    expect(screen.getAllByRole("button", { name: /télécharger l'enregistrement/i })).toHaveLength(
+      2,
+    );
+  });
+
   it("renders a defensive alert when originalRecording is null", () => {
     useGameStore.setState({ ...INITIAL_STATE, phase: "reveal" });
     render(

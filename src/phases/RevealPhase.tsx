@@ -41,6 +41,7 @@ export function RevealPhase({ audioContextFactory, playerFactory }: RevealPhaseP
           recording={originalRecording}
           audioContext={ctx}
           playerFactory={playerFactory}
+          downloadName="reverso-original"
         />
       </div>
 
@@ -52,6 +53,7 @@ export function RevealPhase({ audioContextFactory, playerFactory }: RevealPhaseP
             audioContext={ctx}
             initialDirection="reverse"
             playerFactory={playerFactory}
+            downloadName="reverso-J2"
           />
         </div>
       )}

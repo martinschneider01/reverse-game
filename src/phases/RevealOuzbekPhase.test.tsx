@@ -116,6 +116,18 @@ describe("<RevealOuzbekPhase />", () => {
     expect(s.mode).toBe("mode1");
   });
 
+  it("renders a download button on each reveal player (J1 + J3) (#35)", () => {
+    render(
+      <RevealOuzbekPhase
+        audioContextFactory={audioContextFactory}
+        playerFactory={makeFakePlayer}
+      />,
+    );
+    expect(screen.getAllByRole("button", { name: /télécharger l'enregistrement/i })).toHaveLength(
+      2,
+    );
+  });
+
   it("renders an alert when an artefact is missing (defensive)", () => {
     useGameStore.setState({ ouzbekRecordingP3: null });
     render(

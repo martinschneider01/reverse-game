@@ -646,6 +646,23 @@
     color: var(--color-primary);
   }
 
+  .audio-player-download {
+    background-color: var(--color-surface);
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
+    padding: 0.5rem;
+    min-height: 44px;
+    width: 2.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .audio-player-download:hover {
+    background-color: var(--color-surface-elevated);
+    color: var(--color-text);
+  }
+
   .audio-player-rate {
     color: var(--color-text-muted);
     font-size: 0.875rem;

@@ -431,6 +431,123 @@ describe("<AudioPlayer />", () => {
     expect(screen.queryByRole("button", { name: /fermer/i })).not.toBeInTheDocument();
   });
 
+  it("does not render a download button when downloadName is not provided", () => {
+    const { player } = makeFakePlayer();
+
+    render(
+      <AudioPlayer recording={fakeRecording} audioContext={fakeCtx} playerFactory={() => player} />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /télécharger l'enregistrement/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders a download button when downloadName is provided", () => {
+    const { player } = makeFakePlayer();
+
+    render(
+      <AudioPlayer
+        recording={fakeRecording}
+        audioContext={fakeCtx}
+        playerFactory={() => player}
+        downloadName="reverso-original"
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: /télécharger l'enregistrement/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("clicking the download button triggers a download with the expected filename + extension", async () => {
+    const user = userEvent.setup();
+    const { player } = makeFakePlayer();
+    const blob = new Blob(["audio"], { type: "audio/webm;codecs=opus" });
+    const recording: Recording = { ...fakeRecording, blob };
+
+    const createObjectURL = vi.fn(() => "blob:http://test/abc");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const anchorClick = vi.fn();
+    const realCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, "createElement").mockImplementation((tag) => {
+      const el = realCreateElement(tag);
+      if (tag === "a") {
+        Object.defineProperty(el, "click", { value: anchorClick, configurable: true });
+      }
+      return el;
+    });
+
+    render(
+      <AudioPlayer
+        recording={recording}
+        audioContext={fakeCtx}
+        playerFactory={() => player}
+        downloadName="reverso-original"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /télécharger l'enregistrement/i }));
+
+    expect(createObjectURL).toHaveBeenCalledWith(blob);
+    expect(anchorClick).toHaveBeenCalledTimes(1);
+    // The temporary anchor must carry the filename so the browser saves it
+    // under reverso-original.webm rather than the blob: URL hash.
+    const anchor = createElementSpy.mock.results.find((r) => r.value instanceof HTMLAnchorElement)
+      ?.value as HTMLAnchorElement | undefined;
+    expect(anchor?.download).toBe("reverso-original.webm");
+    expect(anchor?.href).toBe("blob:http://test/abc");
+
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:http://test/abc");
+
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    createElementSpy.mockRestore();
+  });
+
+  it("uses the .mp4 extension for Safari iOS audio/mp4 blobs", async () => {
+    const user = userEvent.setup();
+    const { player } = makeFakePlayer();
+    const blob = new Blob(["audio"], { type: "audio/mp4" });
+    const recording: Recording = { ...fakeRecording, blob };
+
+    const createObjectURL = vi.fn(() => "blob:http://test/mp4");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
+
+    const realCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, "createElement").mockImplementation((tag) => {
+      const el = realCreateElement(tag);
+      if (tag === "a") {
+        Object.defineProperty(el, "click", { value: vi.fn(), configurable: true });
+      }
+      return el;
+    });
+
+    render(
+      <AudioPlayer
+        recording={recording}
+        audioContext={fakeCtx}
+        playerFactory={() => player}
+        downloadName="reverso-original"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /télécharger l'enregistrement/i }));
+
+    const anchor = createElementSpy.mock.results.find((r) => r.value instanceof HTMLAnchorElement)
+      ?.value as HTMLAnchorElement | undefined;
+    expect(anchor?.download).toBe("reverso-original.mp4");
+
+    vi.unstubAllGlobals();
+    createElementSpy.mockRestore();
+  });
+
   it("renders a waveform with the configured number of bars", () => {
     const { player } = makeFakePlayer();
 

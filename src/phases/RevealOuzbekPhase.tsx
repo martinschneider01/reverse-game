@@ -41,6 +41,7 @@ export function RevealOuzbekPhase({ audioContextFactory, playerFactory }: Reveal
           recording={ouzbekRecordingP1}
           audioContext={ctx}
           playerFactory={playerFactory}
+          downloadName="reverso-J1"
         />
       </div>
 
@@ -64,6 +65,7 @@ export function RevealOuzbekPhase({ audioContextFactory, playerFactory }: Reveal
           recording={ouzbekRecordingP3}
           audioContext={ctx}
           playerFactory={playerFactory}
+          downloadName="reverso-J3"
         />
       </div>
 

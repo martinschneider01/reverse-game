@@ -3250,3 +3250,124 @@ Notes pour le prochain agent
    - Le rendu visuel exact (choix de la couleur d'accent, taille)
      est à HITL-valider sur device — jsdom ne valide que la
      présence des classes, pas leur effet.
+
+================================================================
+2026-05-02 19:00 CEST — Issue #35 (bouton télécharger)
+================================================================
+
+Goal: ajouter un bouton "Télécharger" sur les players des écrans de
+reveal pour permettre à l'utilisateur de sauvegarder un recording
+sur l'appareil. Le `Recording.blob` source (Opus/WebM en général,
+audio/mp4 sur Safari iOS) existe déjà — il suffit d'exposer un
+trigger UI.
+
+Approche choisie
+
+   - Ajout au composant `<AudioPlayer />` (single source of truth,
+     comme suggéré dans l'issue) plutôt que côté chaque phase
+     reveal séparément. Activation via prop `downloadName?: string`
+     — undefined = pas de bouton, sinon bouton rendu à droite du
+     gear.
+   - Pas de signature avec extension : la prop reçoit juste le
+     stem ("reverso-original", "reverso-J1", etc.), l'extension
+     est dérivée du `recording.blob.type` via `extensionFor()`.
+     Couvre `audio/webm` (.webm, défaut Chrome/Android), `audio/mp4`
+     (.mp4, Safari iOS 14.3+), `audio/ogg` (.ogg, fallback Firefox).
+     Strip du codec hint après le `;` (e.g. "audio/webm;codecs=opus").
+
+Fichiers touchés
+
+src/components/AudioPlayer.tsx
+   - Nouvelle prop optionnelle `downloadName?: string` dans le type
+     `AudioPlayerProps`.
+   - Nouveau handler `handleDownload()` : crée un object URL via
+     `URL.createObjectURL(recording.blob)`, crée un `<a download>`
+     temporaire, le clique, le retire du DOM, puis revoke l'URL
+     après 1s (certains navigateurs annulent le download si on
+     révoque avant que la save dialog n'ait lu l'URL).
+   - Bouton rendu dans `audio-player-controls` à droite du gear,
+     `aria-label="Télécharger l'enregistrement"`. Pas d'aria-pressed
+     (action one-shot, pas un toggle).
+   - Nouveau composant local `<DownloadIcon />` (flèche vers le bas
+     + barre du sol, stroke 2 currentColor).
+   - Helper `extensionFor(mimeType)` exporté nulle part — local au
+     fichier.
+
+src/index.css
+   - Nouvelle règle `.audio-player-download` (mêmes dimensions que
+     `.audio-player-gear` : 44px min-height, 2.75rem width, mêmes
+     couleurs surface/border, hover sur surface-elevated).
+
+src/phases/RevealPhase.tsx
+   - `originalRecording` AudioPlayer reçoit `downloadName="reverso-original"`.
+   - `guessRecording` AudioPlayer reçoit `downloadName="reverso-J2"`.
+
+src/phases/RevealOuzbekPhase.tsx
+   - `ouzbekRecordingP1` AudioPlayer reçoit `downloadName="reverso-J1"`.
+   - `ouzbekRecordingP3` AudioPlayer reçoit `downloadName="reverso-J3"`.
+
+Tests ajoutés
+
+src/components/AudioPlayer.test.tsx (+4 tests)
+   - "does not render a download button when downloadName is not
+     provided" : régression — le bouton ne doit apparaître nulle
+     part ailleurs (e.g. PreviewPlayer dans RecordingPhase).
+   - "renders a download button when downloadName is provided" :
+     présence du bouton.
+   - "clicking the download button triggers a download with the
+     expected filename + extension" : stub `URL.createObjectURL`,
+     `URL.revokeObjectURL`, et `document.createElement('a')` pour
+     intercepter l'anchor click. Vérifie que `a.download` =
+     "reverso-original.webm" (codec hint stripé), que `a.href`
+     pointe sur l'object URL, que `revokeObjectURL` est appelé
+     uniquement après le timeout de 1s (via `vi.useFakeTimers`).
+   - "uses the .mp4 extension for Safari iOS audio/mp4 blobs" :
+     même setup, blob `audio/mp4` → `a.download` =
+     "reverso-original.mp4".
+
+src/phases/RevealPhase.test.tsx (+1 test)
+   - "renders a download button on each reveal player (#35)" :
+     deux boutons (original + guess).
+
+src/phases/RevealOuzbekPhase.test.tsx (+1 test)
+   - "renders a download button on each reveal player (J1 + J3)
+     (#35)" : deux boutons (P1 + P3).
+
+Verification (toutes vertes)
+
+   - bun run typecheck → clean
+   - bun run lint → 0 warnings, 0 errors
+   - bun run format:check → clean (73 files, après auto-fix de 2
+     fichiers test reformatés par oxfmt)
+   - bun run test → 354/354 passing across 33 test files (+6 tests
+     vs. baseline 348)
+
+Notes pour le prochain agent
+
+   - Les recordings du Mode 1 Challenge (notes activées) et du
+     Mode Ouzbek Challenge ne sont pas couverts par RevealPhase
+     custom — ils passent par les mêmes RevealPhase /
+     RevealOuzbekPhase, donc le download fonctionne aussi en mode
+     Challenge. Pas de surface séparée.
+   - Le `ouzbekRecordingP2` (note de J2) n'est pas un Recording
+     audio mais une string (textarea) — donc pas concerné par le
+     bouton télécharger (et déjà rendu en `<p aria-label="Note de
+     J2">` dans la card J2).
+   - Pas de recording pour J4 (réponse orale non enregistrée — cf.
+     `<p>J4 a annoncé sa réponse oralement à J1 — non enregistrée.</p>`).
+   - HITL à valider : Safari iOS et Chrome Android. Sur iOS Safari,
+     `<a download>` fonctionne depuis iOS 13+, le fichier descend
+     dans Files/Téléchargements. Le suffixe `.mp4` est bien rendu
+     pour les blobs `audio/mp4`. Sur Android Chrome, le `.webm`
+     atterrit dans Téléchargements et est lisible par n'importe quel
+     player capable de décoder Opus.
+   - Reste deux issues "needs-triage" : #33 (warning timer
+     challenge — sound + visual + inhibition pendant playback/record,
+     plus complexe) et #34 (saisie manuelle des règles challenge —
+     inputs numériques en plus des presets).
+   - La prop est `downloadName` (stem only, pas d'extension). Si un
+     jour on veut permettre au caller de surcharger l'extension
+     (ex. forcer `.opus` même si blob.type = audio/webm), faire
+     évoluer en `downloadFilename?: string` (plus l'extension dérivée).
+     Pour l'instant l'auto-extension via mime-type est plus simple
+     et suit ce que MediaRecorder produit réellement.

@@ -17,6 +17,10 @@ export type AudioPlayerProps = {
   audioSessionPrimer?: () => void;
   onPlay?: () => void;
   onClose?: () => void;
+  // When set, a download button is rendered that saves the source blob
+  // (Opus/WebM) under this base name. The extension is appended automatically
+  // from the blob mime type (".webm" by default).
+  downloadName?: string;
 };
 
 const MIN_RATE = 0.25;
@@ -62,6 +66,7 @@ export function AudioPlayer({
   audioSessionPrimer = primeIosAudioSession,
   onPlay,
   onClose,
+  downloadName,
 }: AudioPlayerProps) {
   const effectiveInitialDirection: Direction = lockDirection ?? initialDirection;
   const playerId = useId();
@@ -183,6 +188,21 @@ export function AudioPlayer({
     playerRef.current?.setRate(next);
   }
 
+  function handleDownload(): void {
+    if (downloadName === undefined) return;
+    const filename = `${downloadName}${extensionFor(recording.blob.type)}`;
+    const url = URL.createObjectURL(recording.blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    // Defer revocation: some browsers cancel the download if the URL is
+    // revoked before the navigation/save dialog has read it.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   const forwardActive = isPlaying && direction === "forward";
   const reverseActive = isPlaying && direction === "reverse";
   const forwardDisabled = lockDirection === "reverse" || disabled;
@@ -249,6 +269,17 @@ export function AudioPlayer({
             <GearIcon />
           </button>
         )}
+
+        {downloadName !== undefined && (
+          <button
+            type="button"
+            className="audio-player-download"
+            aria-label="Télécharger l'enregistrement"
+            onClick={handleDownload}
+          >
+            <DownloadIcon />
+          </button>
+        )}
       </div>
 
       {showRateControl && rateRevealed && (
@@ -303,6 +334,30 @@ function CloseIcon(): React.JSX.Element {
       />
     </svg>
   );
+}
+
+function DownloadIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path
+        d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
+function extensionFor(mimeType: string): string {
+  // MediaRecorder produces audio/webm (Chrome/Firefox/Android) or audio/mp4
+  // (Safari iOS, since iOS 14.3). Strip codec hints like ";codecs=opus".
+  const base = mimeType.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (base === "audio/mp4") return ".mp4";
+  if (base === "audio/ogg") return ".ogg";
+  return ".webm";
 }
 
 function GearIcon(): React.JSX.Element {
