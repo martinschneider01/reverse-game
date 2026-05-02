@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { installIosAudioUnlock } from "@/audio/iosAudioUnlock";
+import { installAudioContextResume } from "@/audio/audioContextResume";
 import { loadPersistedState, type PersistedRecording } from "@/store/persistence";
 import { startGameStorePersistence } from "@/store/persistGameStore";
 import { reverseBuffer } from "@/audio/reverseBuffer";
@@ -30,6 +31,7 @@ export function App() {
   const [hydrated, setHydrated] = useState(!HAS_IDB);
 
   useEffect(() => installIosAudioUnlock(), []);
+  useEffect(() => installAudioContextResume(() => audioContextRef.current), []);
 
   function getAudioContext(): AudioContext {
     if (audioContextRef.current === null) {

@@ -1758,3 +1758,109 @@ Recommended follow-ups (NOT in this PR):
 
 No code changes in this commit — only progress.txt is updated to record
 PRD close-out.
+
+
+2026-05-02 — Issue #20 (bug: audio dies after lock screen / app switch on iOS)
+
+Added `src/audio/audioContextResume.ts` and wired it from `App.tsx` to
+recover audio playback after the page returns from background. This is
+the iOS-specific failure mode that was defeating the IndexedDB persistence
+shipped earlier — the round survived the lock screen but the audio engine
+did not.
+
+Root cause analysis
+   Two distinct quirks fire when an iOS PWA backgrounds for more than a
+   few seconds:
+     1. AudioContext.state moves to "suspended". Calling resume() outside
+        a user gesture is a no-op on iOS, so the existing fire-and-forget
+        `void audioContext.resume()` inside player.startSource() couldn't
+        rescue the context once the user came back from lock screen and
+        tapped a play button — the resume() call was actually inside a
+        gesture (good) but the AVAudioSession category had also drifted
+        (bad), so even the resumed context produced silent output.
+     2. AVAudioSession category drifts back to "ambient" / "ringer" while
+        the page is hidden. The well-known fix (already used at first-load
+        in iosAudioUnlock.ts) is to play a short silent <audio> element
+        through HTMLAudioElement, which forces the category back to
+        "playback". This needs to be re-triggered on every wake-up cycle,
+        not just at first-load.
+
+Fix
+   `installAudioContextResume(getContext, options)` listens to:
+     - `visibilitychange` (when document.visibilityState becomes "visible")
+     - `pageshow` with `persisted=true` (bfcache restore)
+
+   On every "page is visible again" transition where the AudioContext is
+   suspended, it:
+     (a) calls `ctx.resume()` immediately — works on Chrome/Firefox where
+         resume() is allowed without a user gesture, no-op on iOS;
+     (b) arms a one-shot listener on pointerdown/touchstart/keydown that
+         re-runs `ctx.resume()` from inside a user-gesture context AND (on
+         iOS only) replays the silent WAV to re-prime AVAudioSession.
+
+   The user's first interaction after wake-up — typically tapping a
+   play button — is the trigger. Because the gesture handler is on
+   `document` (bubble phase) and runs on pointerdown while the play
+   button's onClick is on click, our recovery code fires BEFORE
+   player.play() runs in the same gesture. Combined with the existing
+   resume-from-startSource code path, the click-to-play sequence sees a
+   running context with the right audio category.
+
+Wiring
+   `App.tsx`: added a second `useEffect` after the existing
+   `installIosAudioUnlock` one, passing `() => audioContextRef.current`
+   so the resume handler reads the lazily-created context without
+   forcing it into existence (the context is still created on first
+   `getAudioContext()` call from a phase that needs audio).
+
+Tests
+   `audioContextResume.test.ts` covers:
+     - no-op when context not yet created / already running / page hidden
+     - immediate resume() on visibilitychange (suspended + visible)
+     - gesture-armed resume() and silent-WAV replay (iOS path)
+     - non-iOS path skips the silent WAV
+     - one-shot semantics (gesture fires only once per wake-up)
+     - re-arming works across multiple background → foreground cycles
+     - pageshow handling (persisted=true triggers; persisted=false ignored)
+     - cleanup() removes both visibility and gesture listeners
+     - resume() and play() rejections are swallowed (no throw)
+
+   The iOS detection is injected via `isIos` option for deterministic
+   tests; the user-agent check defaults via `isIosAudioCategoryQuirky()`
+   from iosAudioUnlock.ts.
+
+Verification
+   - bun run typecheck → clean (the pre-existing `@cloudflare/vite-plugin`
+     error went away after `bun install` — the package was in
+     package.json but missing from node_modules)
+   - bun run lint → 0 warnings, 0 errors (95 rules, 46 files)
+   - bun run format:check → clean (47 files)
+   - bun run test → 169/169 passing across 21 files
+
+What is NOT in this PR (deliberately)
+   - No UI message for the "context can't resume" edge case mentioned in
+     issue #20's acceptance criteria. The two-pronged recovery (immediate
+     resume + gesture-armed re-prime) should handle the failure modes
+     observed in practice; if HITL testing on a real iPhone reveals a
+     stuck case where audio still doesn't recover, a follow-up can add a
+     small banner to AudioPlayer that detects ctx.state==="suspended"
+     post-click and renders a "Tap to wake audio" prompt. Did not want
+     to ship the banner blind without seeing the actual failure.
+
+Notes for next agent
+   - `installAudioContextResume` deliberately does NOT force-create the
+     AudioContext. The getter pattern (`() => audioContextRef.current`)
+     means we silently no-op until the user has triggered a phase that
+     needs audio. This avoids creating a context just to keep it warm —
+     pre-game lock-screen cycles cost nothing.
+   - The silent WAV constant is duplicated between iosAudioUnlock.ts and
+     audioContextResume.ts. Both modules document the choice. If a third
+     module ever needs it, extract to `audio/silentAudio.ts`.
+   - The two installers (iosAudioUnlock + audioContextResume) both arm
+     listeners on the same gesture events. They're independent: the
+     unlock fires once and unregisters, the resume re-arms on every
+     wake-up. Tested side-by-side, no interference.
+   - HITL on a real iPhone is required to fully validate this fix — see
+     §14 of PROJECT.md. The failure mode is timing-dependent (iOS only
+     drifts AVAudioSession after some minutes in background) and cannot
+     be reliably reproduced in jsdom.
