@@ -91,4 +91,73 @@ describe("<OuzbekChallengeConfigPhase />", () => {
       "true",
     );
   });
+
+  it("submits custom timer + listen-limit values typed in the personalised inputs (#34)", async () => {
+    const user = userEvent.setup();
+    render(<OuzbekChallengeConfigPhase />);
+
+    const timerInput = screen.getByLabelText(/personnalisé \(secondes\)/i);
+    const limitGroup = screen.getByRole("radiogroup", { name: /ré-écoutes/i });
+    const limitInput = within(limitGroup.parentElement as HTMLElement).getByLabelText(
+      /^personnalisé$/i,
+    );
+
+    await user.type(timerInput, "45");
+    await user.type(limitInput, "7");
+
+    await user.click(screen.getByRole("button", { name: /lancer la partie/i }));
+
+    expect(useGameStore.getState().challengeRules).toEqual({
+      timerMs: 45_000,
+      notesEnabled: true,
+      listenLimit: 7,
+    });
+  });
+
+  it("treats empty / 0 inputs as null on submit (#34)", async () => {
+    const user = userEvent.setup();
+    render(<OuzbekChallengeConfigPhase />);
+
+    const timerInput = screen.getByLabelText(/personnalisé \(secondes\)/i);
+    await user.type(timerInput, "0");
+
+    await user.click(screen.getByRole("button", { name: /lancer la partie/i }));
+
+    expect(useGameStore.getState().challengeRules).toEqual({
+      timerMs: null,
+      notesEnabled: true,
+      listenLimit: null,
+    });
+  });
+
+  it("typing in the timer input deselects every timer chip (#34)", async () => {
+    const user = userEvent.setup();
+    render(<OuzbekChallengeConfigPhase />);
+
+    const timerInput = screen.getByLabelText(/personnalisé \(secondes\)/i);
+    await user.type(timerInput, "30");
+
+    const timerGroup = screen.getByRole("radiogroup", { name: /timer/i });
+    for (const chip of within(timerGroup).getAllByRole("radio")) {
+      expect(chip).toHaveAttribute("aria-checked", "false");
+    }
+  });
+
+  it("rehydrates a custom (non-preset) timer value into the personalised input (#34)", () => {
+    useGameStore.setState({
+      phase: "ouzbekChallengeConfig",
+      mode: "ouzbek",
+      challengeRules: { timerMs: 45_000, notesEnabled: true, listenLimit: 7 },
+    });
+    render(<OuzbekChallengeConfigPhase />);
+
+    const timerInput = screen.getByLabelText(/personnalisé \(secondes\)/i) as HTMLInputElement;
+    expect(timerInput.value).toBe("45");
+
+    const limitGroup = screen.getByRole("radiogroup", { name: /ré-écoutes/i });
+    const limitInput = within(limitGroup.parentElement as HTMLElement).getByLabelText(
+      /^personnalisé$/i,
+    ) as HTMLInputElement;
+    expect(limitInput.value).toBe("7");
+  });
 });

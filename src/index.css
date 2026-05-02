@@ -487,6 +487,17 @@
     gap: 0.5rem;
   }
 
+  .challenge-config-custom {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-top: 0.5rem;
+  }
+
+  .challenge-config-custom > input {
+    max-width: 10rem;
+  }
+
   .chip {
     background-color: var(--color-surface);
     color: var(--color-text);

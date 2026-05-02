@@ -3371,3 +3371,113 @@ Notes pour le prochain agent
      évoluer en `downloadFilename?: string` (plus l'extension dérivée).
      Pour l'instant l'auto-extension via mime-type est plus simple
      et suit ce que MediaRecorder produit réellement.
+
+================================================================
+2026-05-02 19:10 CEST — Issue #34 (saisie manuelle des règles Challenge)
+================================================================
+
+Goal: permettre à J1 de saisir des valeurs personnalisées de timer et
+de listenLimit en plus des presets, sur les deux écrans de config
+Mode Challenge (`ChallengeConfigPhase`) et Ouzbek Challenge
+(`OuzbekChallengeConfigPhase`).
+
+Approche choisie
+
+   - Un champ `<input type="number">` séparé sous chaque fieldset
+     (timer et ré-écoutes), libellé "Personnalisé (secondes)" /
+     "Personnalisé". Le bloc Notes (binaire) n'est pas concerné.
+   - State local séparé du `rules` pour la string saisie : `customTimer`,
+     `customLimit`. Permet à l'utilisateur d'éditer librement le texte
+     (incl. invalides transitoires) sans corruption du rule.
+   - Sémantique "presets vs custom" :
+       - Cliquer un preset → écrit `rules.{timerMs|listenLimit}` ET
+         vide la string custom.
+       - Saisir dans l'input → met à jour la string custom ET parse
+         vers le rule (empty / "0" / négatif / non-entier → null,
+         entier ≥ 1 → la valeur, en ms pour le timer).
+       - Tant que la string custom n'est pas vide, **aucun chip
+         preset n'est rendu sélectionné** (visuellement clair que
+         le mode "personnalisé" est actif).
+   - Pas de validation HTML5 `min={1}` sur l'input — j'avais
+     commencé avec, mais elle bloquait le submit quand l'utilisateur
+     tapait "0" (la spec demande explicitement que "0" soit
+     équivalent à `null`). Validation faite en JS dans
+     `parseCustomSeconds` / `parseCustomLimit`.
+   - Spec laissait le choix UX sur "0 ou vide = null" — choisi : oui,
+     "0" et "" et "abc" et "-5" sont tous parsés en `null`. Cohérent
+     avec le preset "Aucun" / "Illimité".
+   - Pas d'extraction commune entre les deux fichiers (déjà
+     volontairement dupliqués selon les notes du progress P32 —
+     "le fieldset notes diffère et surtout les deux écrans pourraient
+     diverger indépendamment").
+
+Fichiers touchés
+
+src/phases/ChallengeConfigPhase.tsx
+   - Helpers locaux `initialCustomTimer`, `initialCustomLimit`,
+     `parseCustomSeconds`, `parseCustomLimit`.
+   - Deux nouveaux state strings `customTimer`, `customLimit`.
+   - Handlers : `selectTimerPreset`/`selectLimitPreset` (clear le
+     custom string) et `onCustomTimerChange`/`onCustomLimitChange`
+     (parse + update rules).
+   - Rendu : input `<label className="challenge-config-custom">`
+     ajouté sous chacun des deux chip-groups concernés.
+   - Logique de sélection des chips : `timerPresetActive =
+     customTimer === ""` (et idem pour limit) — le chip n'est
+     `aria-checked` que si le custom string est vide.
+
+src/phases/OuzbekChallengeConfigPhase.tsx
+   - Mêmes changements que ChallengeConfigPhase (sans le bloc Notes
+     qui est volontairement absent en Ouzbek).
+
+src/index.css
+   - Nouvelle règle `.challenge-config-custom` (flex column, gap
+     0.25rem, max-width 10rem sur l'input pour ne pas qu'il s'étire
+     en mobile).
+
+Tests ajoutés (+10 tests vs baseline 354 → 364 total)
+
+src/phases/ChallengeConfigPhase.test.tsx (+6 tests)
+   - "submits a custom timer (seconds → ms) typed in the personalised input"
+   - "submits a custom listen-limit typed in the personalised input"
+   - "typing in the timer input deselects every timer chip"
+   - "clicking a preset clears the custom input"
+   - "treats empty / 0 / negative values as null on submit"
+   - "rehydrates a custom (non-preset) timer value into the personalised input"
+
+src/phases/OuzbekChallengeConfigPhase.test.tsx (+4 tests)
+   - "submits custom timer + listen-limit values typed in the personalised inputs"
+   - "treats empty / 0 inputs as null on submit"
+   - "typing in the timer input deselects every timer chip"
+   - "rehydrates a custom (non-preset) timer value into the personalised input"
+
+Verification (toutes vertes)
+
+   - bun run typecheck → clean
+   - bun run lint → 0 warnings, 0 errors (95 rules, 72 files)
+   - bun run format:check → clean (73 files)
+   - bun run test → 364/364 passing across 33 test files
+     (+10 tests vs baseline 354)
+
+Notes pour le prochain agent
+
+   - Reste UNE issue "needs-triage" : #33 (warning timer challenge —
+     visuel + sonore avec inhibition pendant playback/record).
+     Plus complexe : touche `useGuessingTimer`, `AudioPlayer`,
+     `AudioRecorder` (signaling pour l'inhibition), génération
+     d'un bip sonore (Web Audio API ou simple `<audio>`).
+   - Pour l'input custom : si HITL test révèle que la dérive
+     UX (chips qui s'éteignent quand l'input n'est pas vide) gêne
+     les utilisateurs, alternative simple = ré-allumer le chip
+     correspondant si la valeur typée matche un preset (e.g.
+     l'utilisateur tape "60" → chip "60 s" devient sélectionné,
+     mais la string custom n'est pas vidée). Pour l'instant on
+     préfère la séparation nette "preset OU custom".
+   - L'input n'a pas de message d'erreur visible quand la valeur
+     est invalide — le rule passe juste à null silencieusement.
+     Si on veut un feedback plus explicite, ajouter un
+     `<small className="error">` sous l'input quand
+     `customTimer !== "" && parseCustomSeconds(customTimer) === null`.
+   - Pas de support des décimales (1.5 s) — la spec demande
+     entiers et c'est cohérent avec listenLimit. Si demande HITL,
+     élargir à `parseFloat` + un `Math.round(seconds * 1000)`.

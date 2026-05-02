@@ -26,25 +26,70 @@ function pickInitial(stored: ChallengeRules | null): ChallengeRules {
   return { ...stored, notesEnabled: true };
 }
 
+function initialCustomTimer(stored: ChallengeRules | null): string {
+  if (!stored || stored.timerMs === null) return "";
+  if (TIMER_PRESETS.some((p) => p.value === stored.timerMs)) return "";
+  return String(stored.timerMs / 1000);
+}
+
+function initialCustomLimit(stored: ChallengeRules | null): string {
+  if (!stored || stored.listenLimit === null) return "";
+  if (LIMIT_PRESETS.some((p) => p.value === stored.listenLimit)) return "";
+  return String(stored.listenLimit);
+}
+
+function parseCustomSeconds(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  const n = Number(trimmed);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return n * 1000;
+}
+
+function parseCustomLimit(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  const n = Number(trimmed);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return n;
+}
+
 export function OuzbekChallengeConfigPhase() {
   const stored = useGameStore((s) => s.challengeRules);
   const confirmChallengeRules = useGameStore((s) => s.confirmChallengeRules);
   const backToMenu = useGameStore((s) => s.backToMenu);
 
   const [rules, setRules] = useState<ChallengeRules>(() => pickInitial(stored));
+  const [customTimer, setCustomTimer] = useState<string>(() => initialCustomTimer(stored));
+  const [customLimit, setCustomLimit] = useState<string>(() => initialCustomLimit(stored));
 
-  function setTimer(value: number | null): void {
+  function selectTimerPreset(value: number | null): void {
     setRules((r) => ({ ...r, timerMs: value }));
+    setCustomTimer("");
   }
 
-  function setLimit(value: number | null): void {
+  function selectLimitPreset(value: number | null): void {
     setRules((r) => ({ ...r, listenLimit: value }));
+    setCustomLimit("");
+  }
+
+  function onCustomTimerChange(raw: string): void {
+    setCustomTimer(raw);
+    setRules((r) => ({ ...r, timerMs: parseCustomSeconds(raw) }));
+  }
+
+  function onCustomLimitChange(raw: string): void {
+    setCustomLimit(raw);
+    setRules((r) => ({ ...r, listenLimit: parseCustomLimit(raw) }));
   }
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>): void {
     e.preventDefault();
     confirmChallengeRules(rules);
   }
+
+  const timerPresetActive = customTimer === "";
+  const limitPresetActive = customLimit === "";
 
   return (
     <section className="challenge-config">
@@ -61,7 +106,7 @@ export function OuzbekChallengeConfigPhase() {
           <legend>Timer par phase de devinage</legend>
           <div className="chip-group" role="radiogroup" aria-label="Timer">
             {TIMER_PRESETS.map((preset) => {
-              const selected = rules.timerMs === preset.value;
+              const selected = timerPresetActive && rules.timerMs === preset.value;
               return (
                 <button
                   key={preset.label}
@@ -69,20 +114,30 @@ export function OuzbekChallengeConfigPhase() {
                   role="radio"
                   aria-checked={selected}
                   className={selected ? "chip chip-selected" : "chip"}
-                  onClick={() => setTimer(preset.value)}
+                  onClick={() => selectTimerPreset(preset.value)}
                 >
                   {preset.label}
                 </button>
               );
             })}
           </div>
+          <label className="challenge-config-custom">
+            <span>Personnalisé (secondes)</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              placeholder="ex. 90"
+              value={customTimer}
+              onChange={(e) => onCustomTimerChange(e.target.value)}
+            />
+          </label>
         </fieldset>
 
         <fieldset className="challenge-config-field">
           <legend>Ré-écoutes maximum par phase</legend>
           <div className="chip-group" role="radiogroup" aria-label="Ré-écoutes">
             {LIMIT_PRESETS.map((preset) => {
-              const selected = rules.listenLimit === preset.value;
+              const selected = limitPresetActive && rules.listenLimit === preset.value;
               return (
                 <button
                   key={preset.label}
@@ -90,13 +145,23 @@ export function OuzbekChallengeConfigPhase() {
                   role="radio"
                   aria-checked={selected}
                   className={selected ? "chip chip-selected" : "chip"}
-                  onClick={() => setLimit(preset.value)}
+                  onClick={() => selectLimitPreset(preset.value)}
                 >
                   {preset.label}
                 </button>
               );
             })}
           </div>
+          <label className="challenge-config-custom">
+            <span>Personnalisé</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              placeholder="ex. 7"
+              value={customLimit}
+              onChange={(e) => onCustomLimitChange(e.target.value)}
+            />
+          </label>
         </fieldset>
 
         <div className="button-row">
