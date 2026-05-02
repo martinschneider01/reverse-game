@@ -19,7 +19,20 @@ export type PersistedRecording = {
   durationMs: number;
 };
 
-export type PersistedPhase = "guessing" | "confirmEnd" | "reveal";
+export type PersistedPhase =
+  // Mode 1 / Challenge
+  | "guessing"
+  | "confirmEnd"
+  | "reveal"
+  // Mode Ouzbek (cf. §3.13)
+  | "handoffP2"
+  | "guessingP2"
+  | "handoffP3"
+  | "handoffP4"
+  | "guessingP4"
+  | "revealOuzbek";
+
+export type PersistedMode = "mode1" | "ouzbek";
 
 export type PersistedChallengeRules = {
   timerMs: number | null;
@@ -30,12 +43,17 @@ export type PersistedChallengeRules = {
 export type PersistedState = {
   version: 1;
   phase: PersistedPhase;
+  mode: PersistedMode;
   originalRecording: PersistedRecording | null;
   guessRecording: PersistedRecording | null;
   notes: string;
   listenCount: number;
   challengeRules: PersistedChallengeRules | null;
   guessingStartedAt: number | null;
+  // Mode Ouzbek
+  ouzbekRecordingP1: PersistedRecording | null;
+  ouzbekNoteP2: string;
+  ouzbekRecordingP3: PersistedRecording | null;
 };
 
 type RawRecording = {
@@ -51,9 +69,14 @@ type RawState = {
   guessRecording: RawRecording | null;
   notes: string;
   listenCount: number;
-  // Optional: pre-Mode-Challenge saves don't carry these fields. Read with `?? null`.
+  // Optional: pre-Mode-Challenge / pre-Ouzbek saves don't carry these fields.
+  // Read with `?? <default>` for back-compat (cf. PROJECT.md §3.13).
+  mode?: PersistedMode;
   challengeRules?: PersistedChallengeRules | null;
   guessingStartedAt?: number | null;
+  ouzbekRecordingP1?: RawRecording | null;
+  ouzbekNoteP2?: string;
+  ouzbekRecordingP3?: RawRecording | null;
 };
 
 async function toRaw(rec: PersistedRecording): Promise<RawRecording> {
@@ -110,12 +133,16 @@ export async function loadPersistedState(): Promise<PersistedState | null> {
     return {
       version: raw.version,
       phase: raw.phase,
+      mode: raw.mode ?? "mode1",
       originalRecording: raw.originalRecording !== null ? fromRaw(raw.originalRecording) : null,
       guessRecording: raw.guessRecording !== null ? fromRaw(raw.guessRecording) : null,
       notes: raw.notes,
       listenCount: raw.listenCount,
       challengeRules: raw.challengeRules ?? null,
       guessingStartedAt: raw.guessingStartedAt ?? null,
+      ouzbekRecordingP1: raw.ouzbekRecordingP1 != null ? fromRaw(raw.ouzbekRecordingP1) : null,
+      ouzbekNoteP2: raw.ouzbekNoteP2 ?? "",
+      ouzbekRecordingP3: raw.ouzbekRecordingP3 != null ? fromRaw(raw.ouzbekRecordingP3) : null,
     };
   } catch {
     return null;
@@ -131,6 +158,7 @@ export async function savePersistedState(state: PersistedState): Promise<void> {
     raw = {
       version: state.version,
       phase: state.phase,
+      mode: state.mode,
       originalRecording:
         state.originalRecording !== null ? await toRaw(state.originalRecording) : null,
       guessRecording: state.guessRecording !== null ? await toRaw(state.guessRecording) : null,
@@ -138,6 +166,11 @@ export async function savePersistedState(state: PersistedState): Promise<void> {
       listenCount: state.listenCount,
       challengeRules: state.challengeRules,
       guessingStartedAt: state.guessingStartedAt,
+      ouzbekRecordingP1:
+        state.ouzbekRecordingP1 !== null ? await toRaw(state.ouzbekRecordingP1) : null,
+      ouzbekNoteP2: state.ouzbekNoteP2,
+      ouzbekRecordingP3:
+        state.ouzbekRecordingP3 !== null ? await toRaw(state.ouzbekRecordingP3) : null,
     };
   } catch {
     return;

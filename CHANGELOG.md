@@ -2,6 +2,23 @@
 
 Décisions structurelles modifiées par rapport à la version initiale de `PROJECT.md`. Une entrée par décision révisée, datée, justifiée. Format libre (pas de Keep-a-Changelog).
 
+## 2026-05-02 — Mode Téléphone Ouzbek — tracer bullet end-to-end (#27)
+
+**Quoi** : implémentation complète du Mode Téléphone Ouzbek selon le design ratifié en #25 / §3.13. Round jouable de bout en bout : J1 enregistre → J2 écoute en reverse + transcrit → J3 lit la note + enregistre (sans accès reverse) → J4 écoute la reverse de J3 + répond oralement → J1 valide → reveal complet.
+
+**Comment** :
+- **Store** : champ discriminant `mode: 'mode1' | 'ouzbek'`, trois nouveaux champs (`ouzbekRecordingP1`, `ouzbekNoteP2`, `ouzbekRecordingP3`), neuf nouvelles actions (`startOuzbek`, `finishRecordingP1`, `startGuessingP2`, `setOuzbekNoteP2`, `finishGuessingP2`, `startRecordingP3`, `finishRecordingP3`, `startGuessingP4`, `revealOuzbekChain`, `newOuzbekRound`). `permissionGranted` route maintenant vers `recordingA` ou `recordingP1` selon `mode`. `startGame` / `startChallenge` réinitialisent `mode = 'mode1'` (cas d'un retour au menu après un round Ouzbek).
+- **Phases** (8 nouveaux composants) : `RecordingP1Phase`, `HandoffPhase` (paramétrable, factorisé pour P2/P3/P4), `GuessingP2Phase`, `RecordingP3Phase` (avec `lockDirection="forward"` sur la pré-écoute, cf. §3.13 règle "P3 sans reverse"), `GuessingP4Phase`, `RevealOuzbekPhase`. Composé dans `App.tsx` avec un branch par phase, sans factorisation prématurée avec les phases Mode 1 (cf. §3.7).
+- **Menu** : bouton "Mode Ouzbek" ajouté sous "Mode Challenge".
+- **Persistance** : `PersistedPhase` étendu (6 phases Ouzbek persistables ; `recordingP1` / `recordingP3` exclues, symétriques avec `recordingA` non-persistable de Mode 1). Champs Ouzbek lus en optionnels avec `?? null` / `?? ""` ; pas de bump de `version`. Snapshot Ouzbek conditionné sur `ouzbekRecordingP1 !== null` (équivalent au `originalRecording !== null` de Mode 1). Hydratation App.tsx réhydrate les buffers Ouzbek et restaure le mode.
+- **Tests** : +49 tests (18 store, 3 persistence, 3 persistGameStore, 1 menu, 24 phases). Total 251 → 300.
+
+**Décisions de design dans-le-code** :
+- `HandoffPhase` factorisé avec props `player` + `others` + `onContinue` au lieu de trois composants séparés. Why : la duplication serait littérale (titre + consigne + bouton, paramétrés sur le numéro). Un seul composant + 3 callsites est plus court qu'un fichier par hand-off, sans masquer la spécialisation.
+- `RevealOuzbekPhase` séparé de `RevealPhase` (cf. §3.13). Layout v1 : J1 forward+reverse / note J2 / J3 forward+reverse en cards verticales. Le polish (#31) ré-arrangera l'ordre et la mise en avant de la note.
+
+**Slices débloquées** : #31 (reveal enrichi) et #32 (Ouzbek Challenge, après #28/#30 — déjà mergés).
+
 ## 2026-05-02 — Mode Téléphone Ouzbek — phases, store, persistance, hand-offs, fusion de l'ancien Mode 2
 
 **Quoi** : design slice (#25) pour le futur Mode Téléphone Ouzbek — variante 4-joueurs en chaîne où J2 et J4 écoutent en reverse, J3 ré-enregistre depuis une note. Aucun code produit ; cette entrée trace les décisions documentées en §3.13 de `PROJECT.md`.

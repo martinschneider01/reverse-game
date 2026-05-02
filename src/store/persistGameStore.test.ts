@@ -159,6 +159,82 @@ describe("startGameStorePersistence", () => {
     stop();
   });
 
+  it("snapshots an Ouzbek round once ouzbekRecordingP1 is set", async () => {
+    const save = vi.fn(async (_state: PersistedState) => {});
+    const stop = startGameStorePersistence({ debounceMs: 5, save, clear: vi.fn() });
+
+    useGameStore.setState({
+      phase: "handoffP2",
+      mode: "ouzbek",
+      ouzbekRecordingP1: fakeRecording,
+    });
+    vi.advanceTimersByTime(5);
+    await Promise.resolve();
+
+    expect(save).toHaveBeenCalledTimes(1);
+    const call = save.mock.calls[0]?.[0];
+    expect(call?.phase).toBe("handoffP2");
+    expect(call?.mode).toBe("ouzbek");
+    expect(call?.ouzbekRecordingP1).toEqual({
+      blob: fakeRecording.blob,
+      durationMs: 500,
+    });
+
+    stop();
+  });
+
+  it("clears persisted state when in an Ouzbek savable phase but ouzbekRecordingP1 is null", async () => {
+    const save = vi.fn(async (_state: PersistedState) => {});
+    const clear = vi.fn(async () => {});
+    const stop = startGameStorePersistence({ debounceMs: 5, save, clear });
+
+    useGameStore.setState({
+      phase: "handoffP2",
+      mode: "ouzbek",
+      ouzbekRecordingP1: null,
+    });
+    vi.advanceTimersByTime(5);
+    await Promise.resolve();
+
+    expect(save).not.toHaveBeenCalled();
+    expect(clear).toHaveBeenCalledTimes(1);
+
+    stop();
+  });
+
+  it("does NOT snapshot recordingP1 / recordingP3 (active recorder phases)", async () => {
+    const save = vi.fn(async (_state: PersistedState) => {});
+    const clear = vi.fn(async () => {});
+    const stop = startGameStorePersistence({ debounceMs: 5, save, clear });
+
+    useGameStore.setState({
+      phase: "recordingP1",
+      mode: "ouzbek",
+      ouzbekRecordingP1: fakeRecording,
+    });
+    vi.advanceTimersByTime(5);
+    await Promise.resolve();
+
+    expect(save).not.toHaveBeenCalled();
+    expect(clear).toHaveBeenCalledTimes(1);
+
+    save.mockClear();
+    clear.mockClear();
+
+    useGameStore.setState({
+      phase: "recordingP3",
+      mode: "ouzbek",
+      ouzbekRecordingP1: fakeRecording,
+    });
+    vi.advanceTimersByTime(5);
+    await Promise.resolve();
+
+    expect(save).not.toHaveBeenCalled();
+    expect(clear).toHaveBeenCalledTimes(1);
+
+    stop();
+  });
+
   it("stops persisting after the returned unsubscribe is called", async () => {
     const save = vi.fn(async (_state: PersistedState) => {});
     const clear = vi.fn(async () => {});

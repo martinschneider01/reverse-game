@@ -12,12 +12,16 @@ function makeState(overrides: Partial<PersistedState> = {}): PersistedState {
   return {
     version: 1,
     phase: "guessing",
+    mode: "mode1",
     originalRecording: { blob: new Blob(["abc"], { type: "audio/webm" }), durationMs: 500 },
     guessRecording: null,
     notes: "",
     listenCount: 0,
     challengeRules: null,
     guessingStartedAt: null,
+    ouzbekRecordingP1: null,
+    ouzbekNoteP2: "",
+    ouzbekRecordingP3: null,
     ...overrides,
   };
 }
@@ -136,6 +140,75 @@ describe("persistence", () => {
 
     const loaded = await loadPersistedState();
     expect(loaded?.guessingStartedAt).toBeNull();
+  });
+
+  it("round-trips a full Ouzbek state with all three artefacts", async () => {
+    const state = makeState({
+      phase: "guessingP4",
+      mode: "ouzbek",
+      // An Ouzbek save can omit originalRecording; the Ouzbek round
+      // is keyed on ouzbekRecordingP1 instead.
+      originalRecording: null,
+      ouzbekRecordingP1: { blob: new Blob(["P1"], { type: "audio/webm" }), durationMs: 1000 },
+      ouzbekNoteP2: "transcription de J2",
+      ouzbekRecordingP3: { blob: new Blob(["P3"], { type: "audio/webm" }), durationMs: 800 },
+    });
+    await savePersistedState(state);
+    const loaded = await loadPersistedState();
+    expect(loaded?.phase).toBe("guessingP4");
+    expect(loaded?.mode).toBe("ouzbek");
+    expect(loaded?.originalRecording).toBeNull();
+    expect(loaded?.ouzbekRecordingP1?.durationMs).toBe(1000);
+    expect(await loaded?.ouzbekRecordingP1?.blob.text()).toBe("P1");
+    expect(loaded?.ouzbekNoteP2).toBe("transcription de J2");
+    expect(loaded?.ouzbekRecordingP3?.durationMs).toBe(800);
+    expect(await loaded?.ouzbekRecordingP3?.blob.text()).toBe("P3");
+  });
+
+  it("loads Ouzbek fields as defaults (mode='mode1', empty/null) on a pre-Ouzbek save", async () => {
+    // Simulate a save written before any of the Ouzbek fields existed.
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.open("reverso", 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains("state")) db.createObjectStore("state");
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction("state", "readwrite");
+        tx.objectStore("state").put(
+          {
+            version: 1,
+            phase: "guessing",
+            originalRecording: {
+              data: new ArrayBuffer(0),
+              mimeType: "audio/webm",
+              durationMs: 100,
+            },
+            guessRecording: null,
+            notes: "",
+            listenCount: 0,
+            // no mode, no ouzbek* keys
+          },
+          "current",
+        );
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => {
+          db.close();
+          reject(tx.error ?? new Error("seed failed"));
+        };
+      };
+      req.onerror = () => reject(req.error ?? new Error("open failed"));
+    });
+
+    const loaded = await loadPersistedState();
+    expect(loaded?.mode).toBe("mode1");
+    expect(loaded?.ouzbekRecordingP1).toBeNull();
+    expect(loaded?.ouzbekNoteP2).toBe("");
+    expect(loaded?.ouzbekRecordingP3).toBeNull();
   });
 
   it("loads challengeRules as null when absent from a pre-Mode-Challenge save", async () => {

@@ -2751,3 +2751,198 @@ Notes for next agent
      entry + §3.13 patch can revise. None of the calls are
      load-bearing on existing code.
 
+
+================================================================
+2026-05-02 — Issue #27 (Mode Téléphone Ouzbek — tracer bullet end-to-end)
+
+Implémenté le tracer bullet complet selon les décisions
+ratifiées en #25 / PROJECT.md §3.13. Round Ouzbek jouable de
+bout en bout : Menu → permission → recordingP1 → handoffP2 →
+guessingP2 (note) → handoffP3 → recordingP3 (sans reverse) →
+handoffP4 → guessingP4 → revealOuzbek.
+
+Pourquoi #27 et pas #31/#32 :
+   - #31 et #32 dépendent tous deux de #27 (la chaîne de
+     blocage est dans les issues elles-mêmes). Avec #25
+     fermée par le précédent agent, #27 était la SEULE
+     issue déblocable.
+   - Trois issues ouvertes au total. La priorité par valeur
+     livrée est claire : #27 livre tout le mode jouable
+     (le tracer bullet tel qu'utilisé par tous les downstream
+     slices), #31 fait du polish reveal, #32 ajoute la variante
+     Challenge. #27 d'abord.
+
+Résumé des changements
+
+Store (src/store/gameStore.ts)
+   - Phase enum : 8 phases ajoutées (recordingP1, handoffP2,
+     guessingP2, handoffP3, recordingP3, handoffP4, guessingP4,
+     revealOuzbek).
+   - GameMode = 'mode1' | 'ouzbek' (nouveau type exporté).
+   - GameState : + mode, ouzbekRecordingP1, ouzbekNoteP2,
+     ouzbekRecordingP3.
+   - INITIAL_STATE : mode='mode1', tous les ouzbek* à null/"".
+   - 9 nouvelles actions : startOuzbek, finishRecordingP1,
+     startGuessingP2, setOuzbekNoteP2, finishGuessingP2,
+     startRecordingP3, finishRecordingP3, startGuessingP4,
+     revealOuzbekChain, newOuzbekRound.
+   - permissionGranted : route conditionnelle vers recordingA
+     (mode='mode1') ou recordingP1 (mode='ouzbek').
+   - startGame / startChallenge : ré-écrivent mode='mode1'
+     (cas d'un retour au menu après un round Ouzbek — sinon
+     un Mode 1 hérité de mode='ouzbek' resterait ambigu).
+   - backToMenu : reset complet via INITIAL_STATE — déjà
+     correct, mode revient à 'mode1' automatiquement.
+   - newOuzbekRound : reset des trois ouzbek* mais préserve
+     mode='ouzbek' (analogue à newRound qui préserve les
+     challengeRules).
+
+Persistance (src/store/persistence.ts + persistGameStore.ts)
+   - PersistedPhase étendu : 6 phases Ouzbek persistables
+     (handoffP2/3/4, guessingP2/4, revealOuzbek). recordingP1
+     et recordingP3 sont NON-persistables (MediaRecorder actif
+     non-reprenable, symétrique avec recordingA en Mode 1).
+   - PersistedState : + mode, + ouzbekRecordingP1,
+     + ouzbekNoteP2, + ouzbekRecordingP3.
+   - RawState : tous les nouveaux champs en optionnels avec
+     défaut au load (mode ?? 'mode1', ouzbekRecording* ?? null,
+     ouzbekNoteP2 ?? ""). Pas de bump de version, conforme au
+     pattern challengeRules / guessingStartedAt de #26 / #28.
+   - persistGameStore.snapshot : SAVABLE_PHASES inclut les 6
+     phases Ouzbek. La condition "originalRecording !== null"
+     devient une condition par mode :
+       - mode='mode1' && originalRecording === null → clear
+       - mode='ouzbek' && ouzbekRecordingP1 === null → clear
+     Cela garantit qu'on ne persiste un round Ouzbek qu'une
+     fois P1 enregistré (équivalent strict au comportement
+     Mode 1 sur originalRecording).
+
+Composants Ouzbek (8 fichiers nouveaux)
+   - phases/RecordingP1Phase.tsx — clone direct de
+     RecordingAPhase, dispatche finishRecordingP1.
+   - phases/HandoffPhase.tsx — composant générique paramétré
+     par {player, others, onContinue}. Used 3× dans App.tsx
+     pour handoffP2/3/4. Why factorisé : la duplication serait
+     totalement littérale (titre + consigne + bouton, juste
+     les numéros changent). Un fichier paramétré est plus
+     court que 3 fichiers identiques et n'ajoute pas
+     d'abstraction (pas de "concept", juste de la donnée).
+   - phases/GuessingP2Phase.tsx — AudioPlayer
+     lockDirection="reverse" sur ouzbekRecordingP1 +
+     <NotesEditor /> qui écrit dans ouzbekNoteP2 + bouton
+     finishGuessingP2.
+   - phases/RecordingP3Phase.tsx — affiche la note de J2 +
+     <AudioRecorder />. Pré-écoute avec
+     lockDirection="forward" (cf. §3.13 règle "P3 sans
+     reverse" — réutilise la prop existante d'AudioPlayer,
+     bouton reverse visible mais inert). PAS d'AudioPlayer
+     pour ouzbekRecordingP1 dans cette phase (cf. note §3.13
+     "J3 ne doit pas voir P1 non plus").
+   - phases/GuessingP4Phase.tsx — AudioPlayer
+     lockDirection="reverse" sur ouzbekRecordingP3 + bouton
+     "Tout révéler" qui dispatche revealOuzbekChain.
+     J4 répond oralement (pas de capture audio en store).
+   - phases/RevealOuzbekPhase.tsx — layout reveal v1 :
+     J1 forward+reverse / Note J2 (texte) / J3 forward+reverse,
+     en cards verticales. Boutons "Nouvelle partie" et
+     "Retour au menu". Le polish exact (#31) ré-arrangera
+     l'ordre et la mise en avant si nécessaire.
+
+Menu (src/phases/MenuPhase.tsx)
+   - Bouton "Mode Ouzbek" ajouté sous "Mode Challenge", dispatche
+     startOuzbek().
+
+App.tsx
+   - 8 nouveaux branches par phase : recordingP1, handoffP2,
+     guessingP2, handoffP3, recordingP3, handoffP4, guessingP4,
+     revealOuzbek.
+   - Hydratation IDB : guard early-return réécrit pour gérer
+     les deux modes :
+       - mode='ouzbek' && ouzbekRecordingP1 === null → return
+       - mode!='ouzbek' && originalRecording === null → return
+     Réhydrate les buffers Ouzbek (P1, P3) en plus des Mode 1
+     existants (original, guess) avant le setState. Le flag
+     `expired` (timer Mode Challenge) reste sur Mode 1
+     uniquement — pas de timer dans le tracer bullet Ouzbek
+     (#32 ajoutera ça).
+
+Tests ajoutés (49 nouveaux, total 251 → 300)
+   - gameStore.test.ts (+18) : startOuzbek (2 cas), startGame/
+     startChallenge réinitialisent mode (2), permissionGranted
+     route par mode (2), 9 actions Ouzbek (validation + no-op
+     hors phase), backToMenu reset des Ouzbek fields (1),
+     end-to-end happy path Ouzbek complet (1).
+   - persistence.test.ts (+2) : round-trip Ouzbek complet
+     avec les 3 artefacts ; back-compat sur un save pré-Ouzbek
+     (mode default 'mode1', ouzbek* à null/"").
+   - persistGameStore.test.ts (+3) : snapshot Ouzbek conditionné
+     sur ouzbekRecordingP1 ; clear quand ouzbekRecordingP1 null
+     dans une phase Ouzbek ; recordingP1 / recordingP3 NON
+     savable (test sur les deux phases).
+   - MenuPhase.test.tsx (+1) : bouton "Mode Ouzbek" dispatche
+     startOuzbek.
+   - HandoffPhase.test.tsx (NEW, 3 cas) : titre, consigne,
+     callback onContinue.
+   - RecordingP1Phase.test.tsx (NEW, 2 cas) : titre privacy +
+     finishRecordingP1 → handoffP2.
+   - GuessingP2Phase.test.tsx (NEW, 4 cas) : player locked
+     reverse, write to ouzbekNoteP2, finishGuessingP2 →
+     handoffP3, alert si P1 absent.
+   - RecordingP3Phase.test.tsx (NEW, 4 cas) : note de J2
+     affichée, fallback "aucune note", lockDirection forward
+     sur la pré-écoute (reverse disabled), finishRecordingP3 →
+     handoffP4.
+   - GuessingP4Phase.test.tsx (NEW, 3 cas) : player locked
+     reverse, "Tout révéler" → revealOuzbek, alert si P3
+     absent.
+   - RevealOuzbekPhase.test.tsx (NEW, 4 cas) : rendu des 3
+     artefacts, "Nouvelle partie" → recordingP1 (mode reste
+     Ouzbek), "Retour au menu" → menu (mode reset à mode1),
+     alert défensif si chaîne incomplète.
+
+CHANGELOG.md
+   - Entrée datée pour #27 ajoutée en tête, séparée de l'entrée
+     design #25 du même jour.
+
+Ce qui n'est PAS dans cette slice (par scope)
+   - Pas de timer ni de limites ré-écoutes en Ouzbek — c'est
+     #32 (Ouzbek Challenge). Le tracer bullet est mode='ouzbek'
+     SANS challengeRules.
+   - Pas de polish reveal (#31). Le layout actuel suffit pour
+     le contrat minimal du tracer bullet ("tout est lisible,
+     deux recordings dans les deux sens, note en texte").
+   - Pas de modal "Tout révéler ?" (cf. §3.13 — option, pas
+     obligation). Le clic direct sert de validation J1.
+   - Pas de timer-pause ni d'autres règles Challenge dérivées.
+
+Verification (toutes vertes)
+   - bun run typecheck → clean
+   - bun run lint → 0 warnings, 0 errors (95 rules, 66 files)
+   - bun run format:check → clean (67 files)
+   - bun run test → 300/300 passing across 31 test files
+     (was 251/25 — +49 tests, +6 test files)
+
+Notes pour le prochain agent
+   - #31 (reveal Ouzbek enrichi) est l'unblocked le plus simple.
+     Le contrat minimal est déjà rempli par RevealOuzbekPhase ;
+     #31 polish le layout (chaîne J1→J2→J3→J4 lisible dans
+     les deux sens, mise en avant de la note). C'est de l'UI
+     pure, pas de store/persistance touchés.
+   - #32 (Ouzbek Challenge — config + application des règles)
+     est plus gros mais bien spec'é. Pattern établi : ajouter
+     un "Mode Ouzbek Challenge" au menu → variante de
+     ChallengeConfigPhase qui grise notesEnabled (cf. §3.13
+     reco), puis appliquer timer/listenLimit aux phases
+     guessingP2 et guessingP4. Réutiliser useGuessingTimer
+     en le rendant phase-aware (passer un set de phases
+     "guessing-like" à observer). listenCount partagé qui
+     se reset à finishGuessingP2 (cf. §3.13 reco).
+   - Subtilité : le Mode Ouzbek vanilla (cette slice) NE
+     touche PAS challengeRules — il vit avec
+     challengeRules=null. Le Mode Ouzbek Challenge fera
+     challengeRules!=null + mode='ouzbek'. La discrimination
+     "mode" reste utile car challengeRules ne porte pas
+     l'info de structure (4 joueurs vs 2).
+   - Aucun déchet laissé : pas de TODO, pas de fallback, pas
+     de feature flag. La fonctionnalité est complète selon
+     les acceptance criteria de #27.

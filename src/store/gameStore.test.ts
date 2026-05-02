@@ -35,11 +35,15 @@ describe("gameStore", () => {
     it("starts in the menu phase with empty recordings, notes and listen counter", () => {
       const s = useGameStore.getState();
       expect(s.phase).toBe("menu");
+      expect(s.mode).toBe("mode1");
       expect(s.originalRecording).toBeNull();
       expect(s.guessRecording).toBeNull();
       expect(s.notes).toBe("");
       expect(s.listenCount).toBe(0);
       expect(s.challengeRules).toBeNull();
+      expect(s.ouzbekRecordingP1).toBeNull();
+      expect(s.ouzbekNoteP2).toBe("");
+      expect(s.ouzbekRecordingP3).toBeNull();
     });
   });
 
@@ -425,6 +429,222 @@ describe("gameStore", () => {
       expect(s.notes).toBe("wip");
       expect(s.guessRecording).toBe(fakeRecording);
       expect(s.listenCount).toBe(2);
+    });
+  });
+
+  describe("startOuzbek", () => {
+    it("transitions menu → permission and sets mode to ouzbek", () => {
+      useGameStore.getState().startOuzbek();
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("permission");
+      expect(s.mode).toBe("ouzbek");
+    });
+
+    it("is a no-op when phase is not menu", () => {
+      useGameStore.setState({ phase: "recordingA" });
+      useGameStore.getState().startOuzbek();
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("recordingA");
+      expect(s.mode).toBe("mode1");
+    });
+  });
+
+  describe("startGame / startChallenge — mode reset", () => {
+    it("startGame sets mode to mode1 (covers menu re-entry after Ouzbek)", () => {
+      useGameStore.setState({ phase: "menu", mode: "ouzbek" });
+      useGameStore.getState().startGame();
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("permission");
+      expect(s.mode).toBe("mode1");
+    });
+
+    it("startChallenge sets mode to mode1", () => {
+      useGameStore.setState({ phase: "menu", mode: "ouzbek" });
+      useGameStore.getState().startChallenge();
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("challengeConfig");
+      expect(s.mode).toBe("mode1");
+    });
+  });
+
+  describe("permissionGranted — mode-aware routing", () => {
+    it("routes permission → recordingA when mode is mode1", () => {
+      useGameStore.setState({ phase: "permission", mode: "mode1" });
+      useGameStore.getState().permissionGranted();
+      expect(useGameStore.getState().phase).toBe("recordingA");
+    });
+
+    it("routes permission → recordingP1 when mode is ouzbek", () => {
+      useGameStore.setState({ phase: "permission", mode: "ouzbek" });
+      useGameStore.getState().permissionGranted();
+      expect(useGameStore.getState().phase).toBe("recordingP1");
+    });
+  });
+
+  describe("Ouzbek phase actions", () => {
+    it("finishRecordingP1 stores the recording and transitions recordingP1 → handoffP2", () => {
+      useGameStore.setState({ phase: "recordingP1", mode: "ouzbek" });
+      useGameStore.getState().finishRecordingP1(fakeRecording);
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("handoffP2");
+      expect(s.ouzbekRecordingP1).toBe(fakeRecording);
+    });
+
+    it("finishRecordingP1 is a no-op outside recordingP1", () => {
+      useGameStore.setState({ phase: "menu" });
+      useGameStore.getState().finishRecordingP1(fakeRecording);
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("menu");
+      expect(s.ouzbekRecordingP1).toBeNull();
+    });
+
+    it("startGuessingP2 transitions handoffP2 → guessingP2", () => {
+      useGameStore.setState({ phase: "handoffP2", mode: "ouzbek" });
+      useGameStore.getState().startGuessingP2();
+      expect(useGameStore.getState().phase).toBe("guessingP2");
+    });
+
+    it("startGuessingP2 is a no-op outside handoffP2", () => {
+      useGameStore.setState({ phase: "menu" });
+      useGameStore.getState().startGuessingP2();
+      expect(useGameStore.getState().phase).toBe("menu");
+    });
+
+    it("setOuzbekNoteP2 writes when in guessingP2", () => {
+      useGameStore.setState({ phase: "guessingP2", mode: "ouzbek" });
+      useGameStore.getState().setOuzbekNoteP2("ma transcription");
+      expect(useGameStore.getState().ouzbekNoteP2).toBe("ma transcription");
+    });
+
+    it("setOuzbekNoteP2 is a no-op outside guessingP2", () => {
+      useGameStore.setState({ phase: "handoffP2", ouzbekNoteP2: "" });
+      useGameStore.getState().setOuzbekNoteP2("nope");
+      expect(useGameStore.getState().ouzbekNoteP2).toBe("");
+    });
+
+    it("finishGuessingP2 transitions guessingP2 → handoffP3 and preserves the note", () => {
+      useGameStore.setState({
+        phase: "guessingP2",
+        mode: "ouzbek",
+        ouzbekNoteP2: "transcription",
+      });
+      useGameStore.getState().finishGuessingP2();
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("handoffP3");
+      expect(s.ouzbekNoteP2).toBe("transcription");
+    });
+
+    it("startRecordingP3 transitions handoffP3 → recordingP3", () => {
+      useGameStore.setState({ phase: "handoffP3", mode: "ouzbek" });
+      useGameStore.getState().startRecordingP3();
+      expect(useGameStore.getState().phase).toBe("recordingP3");
+    });
+
+    it("finishRecordingP3 stores and transitions recordingP3 → handoffP4", () => {
+      useGameStore.setState({ phase: "recordingP3", mode: "ouzbek" });
+      useGameStore.getState().finishRecordingP3(otherRecording);
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("handoffP4");
+      expect(s.ouzbekRecordingP3).toBe(otherRecording);
+    });
+
+    it("finishRecordingP3 is a no-op outside recordingP3", () => {
+      useGameStore.setState({ phase: "guessingP2" });
+      useGameStore.getState().finishRecordingP3(otherRecording);
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("guessingP2");
+      expect(s.ouzbekRecordingP3).toBeNull();
+    });
+
+    it("startGuessingP4 transitions handoffP4 → guessingP4", () => {
+      useGameStore.setState({ phase: "handoffP4", mode: "ouzbek" });
+      useGameStore.getState().startGuessingP4();
+      expect(useGameStore.getState().phase).toBe("guessingP4");
+    });
+
+    it("revealOuzbekChain transitions guessingP4 → revealOuzbek", () => {
+      useGameStore.setState({ phase: "guessingP4", mode: "ouzbek" });
+      useGameStore.getState().revealOuzbekChain();
+      expect(useGameStore.getState().phase).toBe("revealOuzbek");
+    });
+
+    it("revealOuzbekChain is a no-op outside guessingP4", () => {
+      useGameStore.setState({ phase: "menu" });
+      useGameStore.getState().revealOuzbekChain();
+      expect(useGameStore.getState().phase).toBe("menu");
+    });
+
+    it("newOuzbekRound clears Ouzbek artefacts and transitions revealOuzbek → recordingP1", () => {
+      useGameStore.setState({
+        phase: "revealOuzbek",
+        mode: "ouzbek",
+        ouzbekRecordingP1: fakeRecording,
+        ouzbekNoteP2: "scribbles",
+        ouzbekRecordingP3: otherRecording,
+      });
+      useGameStore.getState().newOuzbekRound();
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("recordingP1");
+      expect(s.mode).toBe("ouzbek");
+      expect(s.ouzbekRecordingP1).toBeNull();
+      expect(s.ouzbekNoteP2).toBe("");
+      expect(s.ouzbekRecordingP3).toBeNull();
+    });
+
+    it("newOuzbekRound is a no-op outside revealOuzbek", () => {
+      useGameStore.setState({ phase: "guessingP4" });
+      useGameStore.getState().newOuzbekRound();
+      expect(useGameStore.getState().phase).toBe("guessingP4");
+    });
+
+    it("backToMenu resets mode and Ouzbek artefacts", () => {
+      useGameStore.setState({
+        phase: "guessingP2",
+        mode: "ouzbek",
+        ouzbekRecordingP1: fakeRecording,
+        ouzbekNoteP2: "wip",
+        ouzbekRecordingP3: otherRecording,
+      });
+      useGameStore.getState().backToMenu();
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("menu");
+      expect(s.mode).toBe("mode1");
+      expect(s.ouzbekRecordingP1).toBeNull();
+      expect(s.ouzbekNoteP2).toBe("");
+      expect(s.ouzbekRecordingP3).toBeNull();
+    });
+  });
+
+  describe("Ouzbek end-to-end happy path", () => {
+    it("walks menu → permission → recordingP1 → handoffP2 → guessingP2 → handoffP3 → recordingP3 → handoffP4 → guessingP4 → revealOuzbek", () => {
+      const store = useGameStore.getState;
+      store().startOuzbek();
+      expect(store().phase).toBe("permission");
+      expect(store().mode).toBe("ouzbek");
+      store().permissionGranted();
+      expect(store().phase).toBe("recordingP1");
+      store().finishRecordingP1(fakeRecording);
+      expect(store().phase).toBe("handoffP2");
+      expect(store().ouzbekRecordingP1).toBe(fakeRecording);
+      store().startGuessingP2();
+      expect(store().phase).toBe("guessingP2");
+      store().setOuzbekNoteP2("ce que j'entends");
+      store().finishGuessingP2();
+      expect(store().phase).toBe("handoffP3");
+      expect(store().ouzbekNoteP2).toBe("ce que j'entends");
+      store().startRecordingP3();
+      expect(store().phase).toBe("recordingP3");
+      store().finishRecordingP3(otherRecording);
+      expect(store().phase).toBe("handoffP4");
+      expect(store().ouzbekRecordingP3).toBe(otherRecording);
+      store().startGuessingP4();
+      expect(store().phase).toBe("guessingP4");
+      store().revealOuzbekChain();
+      const s = store();
+      expect(s.phase).toBe("revealOuzbek");
+      expect(s.ouzbekRecordingP1).toBe(fakeRecording);
+      expect(s.ouzbekNoteP2).toBe("ce que j'entends");
+      expect(s.ouzbekRecordingP3).toBe(otherRecording);
     });
   });
 });

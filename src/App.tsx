@@ -14,6 +14,12 @@ import { PermissionDeniedPhase } from "@/phases/PermissionDeniedPhase";
 import { RecordingAPhase } from "@/phases/RecordingAPhase";
 import { GuessingPhase } from "@/phases/GuessingPhase";
 import { RevealPhase } from "@/phases/RevealPhase";
+import { RecordingP1Phase } from "@/phases/RecordingP1Phase";
+import { HandoffPhase } from "@/phases/HandoffPhase";
+import { GuessingP2Phase } from "@/phases/GuessingP2Phase";
+import { RecordingP3Phase } from "@/phases/RecordingP3Phase";
+import { GuessingP4Phase } from "@/phases/GuessingP4Phase";
+import { RevealOuzbekPhase } from "@/phases/RevealOuzbekPhase";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 const HAS_IDB = typeof indexedDB !== "undefined";
@@ -33,6 +39,9 @@ export function App() {
   const phase = useGameStore((s) => s.phase);
   const confirmEnd = useGameStore((s) => s.confirmEnd);
   const cancelEnd = useGameStore((s) => s.cancelEnd);
+  const startGuessingP2 = useGameStore((s) => s.startGuessingP2);
+  const startRecordingP3 = useGameStore((s) => s.startRecordingP3);
+  const startGuessingP4 = useGameStore((s) => s.startGuessingP4);
   const [hydrated, setHydrated] = useState(!HAS_IDB);
 
   useEffect(() => installIosAudioUnlock(), []);
@@ -52,12 +61,28 @@ export function App() {
       try {
         const persisted = await loadPersistedState();
         if (cancelled || persisted === null) return;
-        if (persisted.originalRecording === null) return;
         const ctx = getAudioContext();
-        const original = await rehydrateRecording(persisted.originalRecording, ctx);
+
+        // Mode 1 / Challenge requires originalRecording; Ouzbek requires
+        // ouzbekRecordingP1. If neither is present we have nothing to resume.
+        if (persisted.mode === "ouzbek" && persisted.ouzbekRecordingP1 === null) return;
+        if (persisted.mode !== "ouzbek" && persisted.originalRecording === null) return;
+
+        const original =
+          persisted.originalRecording !== null
+            ? await rehydrateRecording(persisted.originalRecording, ctx)
+            : null;
         const guess =
           persisted.guessRecording !== null
             ? await rehydrateRecording(persisted.guessRecording, ctx)
+            : null;
+        const ouzbekP1 =
+          persisted.ouzbekRecordingP1 !== null
+            ? await rehydrateRecording(persisted.ouzbekRecordingP1, ctx)
+            : null;
+        const ouzbekP3 =
+          persisted.ouzbekRecordingP3 !== null
+            ? await rehydrateRecording(persisted.ouzbekRecordingP3, ctx)
             : null;
         if (cancelled) return;
         // Timer expiry on hydration: if a Mode Challenge timer ran out while
@@ -71,12 +96,16 @@ export function App() {
           Date.now() - startedAt >= timerMs;
         useGameStore.setState({
           phase: expired ? "reveal" : persisted.phase,
+          mode: persisted.mode,
           originalRecording: original,
           guessRecording: guess,
           notes: persisted.notes,
           listenCount: persisted.listenCount,
           challengeRules: persisted.challengeRules,
           guessingStartedAt: expired ? null : persisted.guessingStartedAt,
+          ouzbekRecordingP1: ouzbekP1,
+          ouzbekNoteP2: persisted.ouzbekNoteP2,
+          ouzbekRecordingP3: ouzbekP3,
         });
       } catch {
         // Hydration failed (corrupt blob, decode error). Fall back to menu.
@@ -124,6 +153,22 @@ export function App() {
           onCancel={cancelEnd}
         />
       )}
+
+      {/* Mode Téléphone Ouzbek (cf. §3.13) */}
+      {phase === "recordingP1" && <RecordingP1Phase audioContextFactory={getAudioContext} />}
+      {phase === "handoffP2" && (
+        <HandoffPhase player={2} others={[1, 3, 4]} onContinue={startGuessingP2} />
+      )}
+      {phase === "guessingP2" && <GuessingP2Phase audioContextFactory={getAudioContext} />}
+      {phase === "handoffP3" && (
+        <HandoffPhase player={3} others={[1, 2, 4]} onContinue={startRecordingP3} />
+      )}
+      {phase === "recordingP3" && <RecordingP3Phase audioContextFactory={getAudioContext} />}
+      {phase === "handoffP4" && (
+        <HandoffPhase player={4} others={[1, 2, 3]} onContinue={startGuessingP4} />
+      )}
+      {phase === "guessingP4" && <GuessingP4Phase audioContextFactory={getAudioContext} />}
+      {phase === "revealOuzbek" && <RevealOuzbekPhase audioContextFactory={getAudioContext} />}
     </main>
   );
 }

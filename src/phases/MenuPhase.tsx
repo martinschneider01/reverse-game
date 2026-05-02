@@ -3,6 +3,7 @@ import { useGameStore } from "@/store/gameStore";
 export function MenuPhase() {
   const startGame = useGameStore((s) => s.startGame);
   const startChallenge = useGameStore((s) => s.startChallenge);
+  const startOuzbek = useGameStore((s) => s.startOuzbek);
   return (
     <section className="menu-screen">
       <div className="brand">
@@ -21,6 +22,9 @@ export function MenuPhase() {
         </button>
         <button type="button" className="cta-secondary" onClick={startChallenge}>
           Mode Challenge
+        </button>
+        <button type="button" className="cta-secondary" onClick={startOuzbek}>
+          Mode Ouzbek
         </button>
       </div>
 

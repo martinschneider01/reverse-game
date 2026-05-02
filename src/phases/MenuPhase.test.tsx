@@ -33,4 +33,13 @@ describe("<MenuPhase />", () => {
     await user.click(screen.getByRole("button", { name: /mode challenge/i }));
     expect(useGameStore.getState().phase).toBe("challengeConfig");
   });
+
+  it("clicking 'Mode Ouzbek' dispatches startOuzbek, transitioning to permission with mode='ouzbek'", async () => {
+    const user = userEvent.setup();
+    render(<MenuPhase />);
+    await user.click(screen.getByRole("button", { name: /mode ouzbek/i }));
+    const s = useGameStore.getState();
+    expect(s.phase).toBe("permission");
+    expect(s.mode).toBe("ouzbek");
+  });
 });
