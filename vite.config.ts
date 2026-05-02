@@ -8,7 +8,11 @@ import { cloudflare } from "@cloudflare/vite-plugin";
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), VitePWA({
-    registerType: 'autoUpdate',
+    // 'prompt' (vs 'autoUpdate'): the new SW waits in 'installed' state so
+    // we can surface a "Nouvelle version disponible" banner — autoUpdate
+    // swaps the SW silently but the live tab keeps serving the old
+    // precached HTML/JS until a manual reload anyway.
+    registerType: 'prompt',
     devOptions: {
       enabled: false,
     },

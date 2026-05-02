@@ -1,0 +1,25 @@
+# Cloudflare Workers Static Assets honors `_headers` (same syntax as Pages).
+# These rules make sure the service-worker update flow actually fires:
+# without them, the browser can hang on to stale sw.js / index.html for
+# hours, and the "Nouvelle version disponible" banner never shows up.
+
+# The service worker MUST be revalidated on every fetch — otherwise a deploy
+# can sit invisible for the default ~24h browser TTL on sw.js.
+/sw.js
+  Cache-Control: no-cache
+
+# index.html drives navigation; force revalidation so the SW (and the page
+# itself when the SW is bypassed) sees the new asset hashes immediately.
+/index.html
+  Cache-Control: no-cache
+
+/manifest.webmanifest
+  Cache-Control: no-cache
+
+# Vite emits content-hashed bundles in /assets — safe to cache forever.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Workbox runtime is also content-hashed (workbox-<hash>.js).
+/workbox-*.js
+  Cache-Control: public, max-age=31536000, immutable

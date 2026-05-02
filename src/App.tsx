@@ -22,6 +22,7 @@ import { RecordingP3Phase } from "@/phases/RecordingP3Phase";
 import { GuessingP4Phase } from "@/phases/GuessingP4Phase";
 import { RevealOuzbekPhase } from "@/phases/RevealOuzbekPhase";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { UpdatePrompt } from "@/components/UpdatePrompt";
 import type { PersistedPhase } from "@/store/persistence";
 
 const HAS_IDB = typeof indexedDB !== "undefined";
@@ -184,6 +185,8 @@ export function App() {
       )}
       {phase === "guessingP4" && <GuessingP4Phase audioContextFactory={getAudioContext} />}
       {phase === "revealOuzbek" && <RevealOuzbekPhase audioContextFactory={getAudioContext} />}
+
+      <UpdatePrompt />
     </main>
   );
 }
