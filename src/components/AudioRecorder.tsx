@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { createRecorder, type Recorder, type RecorderOptions } from "@/audio/wrappers/recorder";
 import { decodeRecording } from "@/audio/decodeRecording";
 import { reverseBuffer } from "@/audio/reverseBuffer";
+import {
+  initialWaveformScaleState,
+  nextWaveformScaleState,
+  rmsToBarHeight,
+} from "@/audio/waveformScale";
 import type { Recording } from "@/audio/recording";
 
 export type AudioRecorderProps = {
@@ -17,7 +22,8 @@ type Status = "idle" | "recording" | "decoding" | "error";
 
 const VIZ_BARS = 64;
 const VIZ_FFT_SIZE = 1024;
-const VIZ_GAIN = 2.5;
+const VIZ_MIN_BAR_PERCENT = 8;
+const VIZ_TARGET_FRACTION = 0.8;
 
 export function AudioRecorder({
   maxDurationMs,
@@ -81,12 +87,36 @@ export function AudioRecorder({
     // We accumulate the peak instantaneous RMS observed inside the current
     // bucket so the bar height "freezes" as soon as the playhead moves past it
     // — the resulting waveform mirrors what AudioPlayer will draw afterwards.
+    //
+    // The bar height shown on screen is rescaled every frame from the latest
+    // adaptive peak — bars previously drawn under a lower peak shrink as the
+    // peak rises, keeping the whole waveform in a visible range regardless of
+    // absolute volume. The stored bucket RMS itself is unaltered (the audio
+    // recording is unaffected — this is purely a visual transform).
     const bucketDurationMs = maxDurationMs / VIZ_BARS;
     const bucketRms = new Float32Array(VIZ_BARS);
+    let highestBucketDrawn = -1;
+    let scaleState = initialWaveformScaleState();
     const bars = barRefs.current;
     const startMs = performance.now();
     const data = new Uint8Array(analyser.fftSize);
     let rafId: number | null = null;
+
+    const renderBars = (lastBucket: number): void => {
+      for (let i = 0; i <= lastBucket; i++) {
+        const el = bars[i];
+        if (el === null || el === undefined) continue;
+        const height = rmsToBarHeight(bucketRms[i] ?? 0, scaleState, {
+          targetFraction: VIZ_TARGET_FRACTION,
+          minHeight: VIZ_MIN_BAR_PERCENT / 100,
+          maxHeight: 1,
+        });
+        el.style.height = `${height * 100}%`;
+        if (!el.classList.contains("recorder-waveform-bar-active")) {
+          el.classList.add("recorder-waveform-bar-active");
+        }
+      }
+    };
 
     const loop = (): void => {
       analyser.getByteTimeDomainData(data);
@@ -98,6 +128,8 @@ export function AudioRecorder({
       }
       const rms = Math.sqrt(sumSq / data.length);
 
+      scaleState = nextWaveformScaleState(scaleState, rms);
+
       const elapsed = performance.now() - startMs;
       const elapsedFrac = Math.min(1, elapsed / maxDurationMs);
       const currentBucket = Math.min(VIZ_BARS - 1, Math.floor(elapsed / bucketDurationMs));
@@ -105,14 +137,8 @@ export function AudioRecorder({
       const prev = bucketRms[currentBucket] ?? 0;
       if (rms > prev) bucketRms[currentBucket] = rms;
 
-      const activeHeight = Math.min(1, (bucketRms[currentBucket] ?? 0) * VIZ_GAIN);
-      const activeEl = bars[currentBucket];
-      if (activeEl !== null && activeEl !== undefined) {
-        activeEl.style.height = `${Math.max(8, activeHeight * 100)}%`;
-        if (!activeEl.classList.contains("recorder-waveform-bar-active")) {
-          activeEl.classList.add("recorder-waveform-bar-active");
-        }
-      }
+      if (currentBucket > highestBucketDrawn) highestBucketDrawn = currentBucket;
+      renderBars(highestBucketDrawn);
 
       if (playheadRef.current !== null) {
         playheadRef.current.style.left = `${elapsedFrac * 100}%`;
@@ -143,7 +169,7 @@ export function AudioRecorder({
       }
       for (const el of barRefs.current) {
         if (el !== null && el !== undefined) {
-          el.style.height = "8%";
+          el.style.height = `${VIZ_MIN_BAR_PERCENT}%`;
           el.classList.remove("recorder-waveform-bar-active");
         }
       }
@@ -210,7 +236,7 @@ export function AudioRecorder({
                 barRefs.current[i] = el;
               }}
               className="recorder-waveform-bar"
-              style={{ height: "8%" }}
+              style={{ height: `${VIZ_MIN_BAR_PERCENT}%` }}
             />
           ))}
           {status === "recording" && (

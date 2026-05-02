@@ -1864,3 +1864,103 @@ Notes for next agent
      §14 of PROJECT.md. The failure mode is timing-dependent (iOS only
      drifts AVAudioSession after some minutes in background) and cannot
      be reliably reproduced in jsdom.
+
+================================================================
+2026-05-02 — issue #21 — auto-scaling de la waveform d'enregistrement
+
+Picked #21 because it was the highest-priority unblocked, non-HITL issue:
+a real usability fix that affects every recording (quiet voices were
+producing near-invisible bars), with a naturally testable pure
+function. #22 (rename A/B → 1/2) and #23 (modal confirmation) were
+also unblocked but felt lower-impact / required design decisions.
+
+Approach
+   The fixed VIZ_GAIN = 2.5 multiplier was the root cause: amplifying a
+   raw RMS value by a constant means quiet voices that peak around
+   RMS=0.05 only reach 12.5% bar height, while loud voices that hit
+   RMS=0.5 saturate at 125% (clipped to 100%) for most of the
+   recording. Either way the visible signal carries no information
+   about the dynamic range within the take.
+
+   Replaced with a rolling adaptive peak that's tracked frame-by-frame
+   and used to normalize the bar heights at draw time. Loudest moment
+   of the current take maps to ~80% of bar height regardless of
+   absolute volume.
+
+New module: src/audio/waveformScale.ts
+   Three pure functions:
+     - initialWaveformScaleState({ floorPeak? }) → { peak }
+     - nextWaveformScaleState(state, instantRms, options?) → { peak }
+       attack/release smoothing on the tracked peak. Attack 0.15
+       (rises modestly toward new highs), release 0.003 (decays very
+       slowly when input drops — keeps the scale stable across short
+       silences). Clamped at floor 0.02 so noise floor doesn't get
+       amplified.
+     - rmsToBarHeight(rms, state, options?) → number in [0, 1]
+       Divides rms by tracked peak, multiplies by targetFraction
+       (default 0.75). Caps at maxHeight, floors at minHeight.
+
+   All three are deterministic and side-effect-free. Tests cover:
+   floor clamp, attack/release math, smooth multi-frame ramp, no
+   flicker on small input fluctuations, equal visual range for quiet
+   and loud voices at their respective peaks, edge cases (zero rms,
+   tiny rms, rms above peak).
+
+Wiring in AudioRecorder.tsx
+   - VIZ_GAIN constant removed; VIZ_TARGET_FRACTION = 0.8 added (the
+     loudest moment shows at 80% of bar height — leaves visual
+     headroom so the user can see when they're "loud").
+   - VIZ_MIN_BAR_PERCENT = 8 (replaces the literal 8 used in three
+     places — initial JSX height, cleanup reset, and the previous
+     min-height clamp).
+   - Each frame: update scaleState, accumulate bucket RMS as before,
+     then re-render ALL bars from index 0 to highestBucketDrawn using
+     the current scale. This means previously-drawn bars rescale
+     downward as the user gets louder — visually consistent with the
+     "the loudest moment in this take is the reference" model. The
+     stored bucket RMS values are unchanged; only the rendered height
+     is recomputed.
+   - Audio recording itself is unaffected — no change to
+     MediaRecorder, no change to the AudioBuffer or Blob that's
+     persisted/decoded/reversed/passed to onRecorded.
+
+Acceptance criteria check
+   - [x] Voix faible → bars remplissent ~50–80% de la hauteur sur les
+         pics: yes (targetFraction = 0.8, floorPeak = 0.02 means even a
+         quiet 0.02 RMS will scale to 0.8 / 0.02 * 0.02 = 80% at the
+         personal peak).
+   - [x] Voix forte → barres ne saturent pas constamment: yes
+         (targetFraction = 0.8 leaves 20% headroom; only frames that
+         exceed the tracked peak briefly clip at 100%, and the peak
+         catches up via attack within a few frames).
+   - [x] Échelle s'adapte progressivement (pas de flicker): attack 0.15
+         and release 0.003 verified by test
+         (does_not_flicker_when_input_alternates_around_the_current_peak).
+   - [x] Aucune modif de l'AudioBuffer / Blob: confirmed — pure visual
+         transform, reads bucket RMS but never mutates it for storage.
+   - [x] Tests unitaires sur la fonction de scaling (pure): 11 tests
+         in waveformScale.test.ts.
+
+Verification
+   - bun run typecheck → clean
+   - bun run lint → 0 warnings, 0 errors (95 rules, 48 files)
+   - bun run format:check → clean (49 files)
+   - bun run test → 180/180 passing across 22 test files (was 169
+     across 21 — added 11 tests in 1 new file, all green)
+
+Notes for next agent
+   - The tuning constants (attack 0.15, release 0.003,
+     targetFraction 0.8, floorPeak 0.02) are conservative starting
+     points. If HITL on a real device shows the bars feeling too
+     "settled" or too "twitchy", these are the levers — change them
+     in waveformScale.ts (defaults) or pass options at the call site
+     in AudioRecorder.tsx. The pure-function tests don't pin specific
+     values for the defaults, so they tolerate tuning.
+   - The render loop now redraws every active bar each frame instead
+     of only the current one. At 60fps with 64 bars this is
+     negligible (~3840 style writes/sec at the worst case, near the
+     end of a 15s take), but if perf ever bites, only redraw bars
+     when scaleState.peak crosses a threshold change.
+   - Issue #25/#26/etc. (Mode Téléphone Ouzbek, Mode Challenge) will
+     reuse the same <AudioRecorder /> primitive — they automatically
+     get the auto-scaling without additional work.
