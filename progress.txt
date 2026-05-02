@@ -2427,3 +2427,115 @@ Notes for next agent
      stay consistent unless there's a reason not to.
    - #25 (HITL Mode Ouzbek design) is still pending. After the
      three rule-app slices land, that's the next big surface.
+
+================================================================
+2026-05-02 — issue #30 — Mode Challenge: limite ré-écoutes
+
+Picked #30 over #25/#28 because:
+   - The previous agent's notes called it the natural follow-up
+     to #29 ("medium" complexity vs #28 "heaviest").
+   - It follows the rule-application pattern set by #29 (read
+     challengeRules in the phase, derive a local boolean, wire
+     it through), which is reusable, deterministic work.
+   - #28 (timer) needs guessingStartedAt persistence and
+     wall-clock resume — best left for a fresh session.
+   - #25 is HITL design and stacking another design slice on
+     top of three rule-app slices wasn't valuable; alternating
+     can resume next session.
+
+What landed
+   - <AudioPlayer /> gained an optional `disabled?: boolean` prop
+     that disables BOTH play buttons (forward + reverse), OR-d
+     with the existing lockDirection-based per-button disable.
+     Why: the play buttons are the "Écouter" surface (§3.12 line
+     209) — disabling them at the player level keeps GuessingPhase
+     simple and avoids leaking listen-limit logic into the
+     player's internals.
+   - GuessingPhase derives `listenLimit` and `limitReached` from
+     `challengeRules`, passes `disabled={limitReached}` to the
+     original-recording <AudioPlayer />, and switches the counter
+     text from "Écoutes : X" to "Écoutes : X / N" when
+     listenLimit !== null. Both Mode 1 (null) and "limit set"
+     paths covered.
+   - No store changes. listenCount and challengeRules are both
+     already persisted (per #26), so the lock-screen-survives
+     acceptance criterion is satisfied structurally — verified
+     no schema bump needed.
+
+Decisions made within #30's scope
+   1. Disabled vs gating in onPlay. Chose AudioPlayer-level
+      disabled. Why: the alternative (gate inside onPlay /
+      pre-check) needs the player to ask permission before
+      playing, which complicates the interface for one rule.
+      Disabling the buttons is the visible UX the design called
+      for ("bouton 'Écouter' désactivé").
+   2. Disabled-while-playing UX. With the simple `disabled = OR`
+      approach, if the user clicks play on the limit-1 attempt
+      and the count hits the limit, the button is now disabled
+      including the pause action. Acceptable because: max audio
+      is 15s; the alternative (track isPlaying inside the
+      derivation) doubles the complexity for a 15s edge case.
+      Documented for next agent in case HITL flags it.
+   3. No reveal-phase counter ("Écoutes : X / N" in reveal),
+      even though §3.12 line 219 lists it as "optional". Why:
+      not in #30's acceptance criteria, and the reveal currently
+      has no counter at all — adding one is a UX choice that
+      belongs in its own slice. Punt to a follow-up if the user
+      wants it.
+   4. Mode 3 question (issue criterion: "Décision documentée :
+      cette issue couvre-t-elle le Mode 3 prévu ou s'y intègre-
+      t-elle ?"). Already documented in PROJECT.md §1 line 39
+      ("La règle 'limite de ré-écoutes' est désormais une des
+      trois règles configurables du Mode Challenge ... Pas de
+      mode séparé pour cette unique règle.") and §10 line 486.
+      #30 just enforces that decision in code — the answer is
+      "absorbed into Mode Challenge, no separate Mode 3."
+
+What is intentionally NOT done
+   - No reveal-counter (see decision 3).
+   - No isPlaying-aware disable logic in AudioPlayer (see
+     decision 2).
+   - No abstraction across rule slices (notes / limit / future
+     timer) — three callers, each with distinct shape, would
+     produce a leaky abstraction.
+
+Files changed
+   - src/components/AudioPlayer.tsx: +disabled prop, OR'd into
+     forwardDisabled/reverseDisabled.
+   - src/phases/GuessingPhase.tsx: +listenLimit / limitReached /
+     counterText derivations, wired into <AudioPlayer disabled />
+     and counter chip.
+   - src/components/AudioPlayer.test.tsx: 2 new tests (disabled
+     true / disabled+lockDirection combo).
+   - src/phases/GuessingPhase.test.tsx: 5 new tests (Mode 1
+     counter / X-of-N counter / not-disabled when below limit /
+     disabled when at limit / disabled after click that crosses
+     limit).
+
+Verification
+   - bun run typecheck → clean
+   - bun run lint → 0 warnings, 0 errors (95 rules, 50 files)
+   - bun run format:check → clean (51 files)
+   - bun run test → 218/218 passing across 23 test files
+     (was 211/23 — added 7 tests, no new test files)
+
+Notes for next agent
+   - Two unblocked v0.2 issues left: #28 (timer) and #25 (HITL
+     Ouzbek design). #28 is the heaviest of the rule slices —
+     needs guessingStartedAt persistence (§3.12 lines 205, 213),
+     wall-clock resume after lock screen, and the forced
+     guessing→reveal transition on expiry (§3.12 line 211). The
+     persistence schema decision is open: previous agent chose
+     "optional field" for challengeRules (no version bump). For
+     #28 you can stay consistent with that, or bundle a v1→v2
+     migration with both fields. Document the call.
+   - #25 (Ouzbek design) unblocks 3 downstream issues (#27,
+     #31, partially #32). It's HITL/design and a good candidate
+     to alternate with the implementation slices.
+   - Pattern set by #29 + #30 for rule-app: read challengeRules,
+     derive locals, wire to existing primitives. #28 will break
+     this pattern slightly (needs a side effect — the wall-clock
+     timer subscription — not just a render-time derivation).
+     Consider a small useGuessingTimer() hook scoped to
+     GuessingPhase rather than inlining setTimeout/clearTimeout
+     dance directly in the component.

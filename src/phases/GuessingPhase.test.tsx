@@ -192,6 +192,77 @@ describe("<GuessingPhase />", () => {
     expect(screen.queryByRole("textbox", { name: /notes/i })).not.toBeInTheDocument();
   });
 
+  it("shows a plain 'Écoutes : X' counter in Mode 1 (listenLimit === null)", () => {
+    render(
+      <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    expect(screen.getByLabelText(/compteur d'écoutes/i)).toHaveTextContent("Écoutes : 0");
+    expect(screen.getByLabelText(/compteur d'écoutes/i).textContent).not.toMatch(/\//);
+  });
+
+  it("shows 'Écoutes : X / N' counter when listenLimit is defined", () => {
+    useGameStore.setState({
+      ...INITIAL_STATE,
+      phase: "guessing",
+      originalRecording: fakeOriginal,
+      listenCount: 1,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, listenLimit: 3 },
+    });
+    render(
+      <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    expect(screen.getByLabelText(/compteur d'écoutes/i)).toHaveTextContent("Écoutes : 1 / 3");
+  });
+
+  it("does not disable the reverse play button while listenCount < listenLimit", () => {
+    useGameStore.setState({
+      ...INITIAL_STATE,
+      phase: "guessing",
+      originalRecording: fakeOriginal,
+      listenCount: 2,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, listenLimit: 3 },
+    });
+    render(
+      <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    expect(screen.getByRole("button", { name: /lecture à l'envers/i })).not.toBeDisabled();
+  });
+
+  it("disables the play button when listenCount >= listenLimit", () => {
+    useGameStore.setState({
+      ...INITIAL_STATE,
+      phase: "guessing",
+      originalRecording: fakeOriginal,
+      listenCount: 3,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, listenLimit: 3 },
+    });
+    render(
+      <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    expect(screen.getByRole("button", { name: /lecture à l'envers/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /lecture à l'endroit/i })).toBeDisabled();
+  });
+
+  it("disables the play button after reaching the limit by clicking play", async () => {
+    const user = userEvent.setup();
+    useGameStore.setState({
+      ...INITIAL_STATE,
+      phase: "guessing",
+      originalRecording: fakeOriginal,
+      listenCount: 0,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, listenLimit: 1 },
+    });
+    render(
+      <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    const reverseBtn = screen.getByRole("button", { name: /lecture à l'envers/i });
+    expect(reverseBtn).not.toBeDisabled();
+    await user.click(reverseBtn);
+    expect(useGameStore.getState().listenCount).toBe(1);
+    expect(screen.getByRole("button", { name: /pause/i })).toBeDisabled();
+    expect(screen.getByLabelText(/compteur d'écoutes/i)).toHaveTextContent("Écoutes : 1 / 1");
+  });
+
   it("the 'Ta voix' replay player does not expose the gear (and slider) while the original does", async () => {
     const user = userEvent.setup();
     useGameStore.setState({

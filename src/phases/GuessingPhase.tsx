@@ -33,6 +33,10 @@ export function GuessingPhase({
   const endGuessing = useGameStore((s) => s.endGuessing);
 
   const notesEnabled = challengeRules?.notesEnabled !== false;
+  const listenLimit = challengeRules?.listenLimit ?? null;
+  const limitReached = listenLimit !== null && listenCount >= listenLimit;
+  const counterText =
+    listenLimit !== null ? `Écoutes : ${listenCount} / ${listenLimit}` : `Écoutes : ${listenCount}`;
 
   if (originalRecording === null) {
     return (
@@ -55,11 +59,12 @@ export function GuessingPhase({
           recording={originalRecording}
           audioContext={ctx}
           lockDirection="reverse"
+          disabled={limitReached}
           playerFactory={playerFactory}
           onPlay={incrementListenCount}
         />
         <p aria-label="Compteur d'écoutes" className="counter-chip">
-          Écoutes : {listenCount}
+          {counterText}
         </p>
       </div>
 

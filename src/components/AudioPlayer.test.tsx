@@ -221,6 +221,39 @@ describe("<AudioPlayer />", () => {
     expect(reverseBtn).not.toBeDisabled();
   });
 
+  it("when disabled is true, both play buttons are disabled", () => {
+    const { player } = makeFakePlayer();
+
+    render(
+      <AudioPlayer
+        recording={fakeRecording}
+        audioContext={fakeCtx}
+        playerFactory={() => player}
+        disabled={true}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /lecture à l'endroit/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /lecture à l'envers/i })).toBeDisabled();
+  });
+
+  it("disabled combined with lockDirection still disables the unlocked button", () => {
+    const { player } = makeFakePlayer();
+
+    render(
+      <AudioPlayer
+        recording={fakeRecording}
+        audioContext={fakeCtx}
+        playerFactory={() => player}
+        lockDirection="reverse"
+        disabled={true}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /lecture à l'envers/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /lecture à l'endroit/i })).toBeDisabled();
+  });
+
   it("hides the gear button (and slider) when showRateControl is false", () => {
     const { player } = makeFakePlayer();
 

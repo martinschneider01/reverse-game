@@ -9,6 +9,7 @@ export type AudioPlayerProps = {
   initialDirection?: Direction;
   lockDirection?: Direction;
   showRateControl?: boolean;
+  disabled?: boolean;
   playerFactory?: (ctx: AudioContext) => Player;
   onPlay?: () => void;
   onClose?: () => void;
@@ -52,6 +53,7 @@ export function AudioPlayer({
   initialDirection = "forward",
   lockDirection,
   showRateControl = true,
+  disabled = false,
   playerFactory = createPlayer,
   onPlay,
   onClose,
@@ -171,8 +173,8 @@ export function AudioPlayer({
 
   const forwardActive = isPlaying && direction === "forward";
   const reverseActive = isPlaying && direction === "reverse";
-  const forwardDisabled = lockDirection === "reverse";
-  const reverseDisabled = lockDirection === "forward";
+  const forwardDisabled = lockDirection === "reverse" || disabled;
+  const reverseDisabled = lockDirection === "forward" || disabled;
 
   const playheadFrac = direction === "reverse" ? 1 - positionFrac : positionFrac;
 
