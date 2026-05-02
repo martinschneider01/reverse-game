@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createRecorder, type Recorder, type RecorderOptions } from "@/audio/wrappers/recorder";
 import { decodeRecording } from "@/audio/decodeRecording";
+import { computePeakGain } from "@/audio/peakGain";
 import { reverseBuffer } from "@/audio/reverseBuffer";
 import {
   initialWaveformScaleState,
@@ -215,7 +216,8 @@ export function AudioRecorder({
       const forward = await decode(blob, ctx);
       const reversed = reverse(forward, ctx);
       const durationMs = (forward.length / forward.sampleRate) * 1000;
-      onRecorded({ forward, reverse: reversed, durationMs, blob });
+      const gain = computePeakGain(forward);
+      onRecorded({ forward, reverse: reversed, durationMs, gain, blob });
       setStatus("idle");
     } catch (err) {
       setStatus("error");

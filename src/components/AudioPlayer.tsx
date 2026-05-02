@@ -92,6 +92,7 @@ export function AudioPlayer({
 
   useEffect(() => {
     playerRef.current?.load(recording);
+    playerRef.current?.setGain(recording.gain);
   }, [recording]);
 
   useEffect(() => {

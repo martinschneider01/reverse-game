@@ -57,6 +57,7 @@ function makeRecording(length = 48000): Recording {
     forward: makeBuffer(length),
     reverse: makeBuffer(length),
     durationMs: 1000,
+    gain: 1,
     blob: new Blob(),
   };
 }

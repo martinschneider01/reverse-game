@@ -5,6 +5,7 @@ import { installAudioContextResume } from "@/audio/audioContextResume";
 import { loadPersistedState, type PersistedRecording } from "@/store/persistence";
 import { startGameStorePersistence } from "@/store/persistGameStore";
 import { reverseBuffer } from "@/audio/reverseBuffer";
+import { computePeakGain } from "@/audio/peakGain";
 import type { Recording } from "@/audio/recording";
 import { MenuPhase } from "@/phases/MenuPhase";
 import { ChallengeConfigPhase } from "@/phases/ChallengeConfigPhase";
@@ -23,7 +24,8 @@ async function rehydrateRecording(p: PersistedRecording, ctx: AudioContext): Pro
   const data = await p.blob.arrayBuffer();
   const forward = await ctx.decodeAudioData(data);
   const reversed = reverseBuffer(forward, ctx);
-  return { forward, reverse: reversed, durationMs: p.durationMs, blob: p.blob };
+  const gain = computePeakGain(forward);
+  return { forward, reverse: reversed, durationMs: p.durationMs, gain, blob: p.blob };
 }
 
 export function App() {
