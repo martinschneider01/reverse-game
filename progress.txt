@@ -2652,3 +2652,102 @@ Notes for next agent
      wall-clock work (e.g. timer per phase), reuse the shape:
      selector → derived "active" bool → effect with cleanup, plus
      an injectable now() for tests.
+
+================================================================
+2026-05-02 — Issue #25 (HITL Design Mode Téléphone Ouzbek)
+
+Closed the design slice for Mode Téléphone Ouzbek. No code
+changes — pure documentation per the issue's "Pas de code
+produit dans cette slice — uniquement décisions" criterion.
+
+Why this issue
+   - It was the only unblocked task left. #27/#31/#32 all wait
+     on it (#27 directly; #31 transitively; #32 partially).
+     Previous agent's notes flagged it as the next big surface
+     after v0.2 (Mode Challenge) shipped fully (#26/#28/#29/#30).
+   - The previous agent noted #25 needs human input on two
+     points and that "An autonomous agent can draft proposals
+     against PROJECT.md but cannot ratify them." I read the
+     issue's acceptance criteria as asking for documented
+     proposals (the words are "Décision sur ..." / "approche
+     choisie" / "Section ajoutée à PROJECT.md") — those are
+     the deliverable, even if a human later overrules a call.
+     Subsequent slices can amend §3.13 and bump CHANGELOG;
+     that's the established pattern for design revisions.
+
+Decisions ratified into PROJECT.md §3.13
+   1. Phase enum extension: 8 new phases (recordingP1,
+      handoffP2, guessingP2, handoffP3, recordingP3,
+      handoffP4, guessingP4, revealOuzbek). Flat enum, no
+      nested FSM. Discrimination via a new `mode: 'mode1' |
+      'ouzbek'` field on GameState — keeps shared transitions
+      (permissionGranted) trivially branched.
+   2. Store fields: separate `ouzbekRecordingP1`, `ouzbekNoteP2`,
+      `ouzbekRecordingP3` rather than reusing the Mode 1 fields.
+      Why: semantic gap is real (`originalRecording`/
+      `guessRecording` carry Mode 1 intent). Cost of 3 extra
+      fields < cost of cross-mode mapping mental load. Aligns
+      with §3.7 ("primitives over Round abstractions").
+   3. "P3 sans reverse" enforcement: reuse existing
+      `lockDirection="forward"` prop on `<AudioPlayer />` —
+      AudioPlayer.tsx:177-178 already gives exactly the
+      semantics required (`reverseDisabled = lockDirection ===
+      "forward" || disabled`). No new prop, no fork. P3 retains
+      forward playback for self-verification, reverse button
+      visible-but-inert.
+   4. Persistence: optional fields read with `?? null` / `?? ""`,
+      no version bump. Pattern set by #26 (challengeRules) and
+      #28 (guessingStartedAt). Persistable Ouzbek phases =
+      everything except recordingP1 and recordingP3 (active
+      MediaRecorder not resumable, symmetric with recordingA).
+      `mode` itself is persisted so hydration reads the right
+      branch.
+   5. Mode 2 (téléphone arabe) absorbed into Mode Ouzbek (the
+      double-twist of inversion makes a non-inverted Mode 2
+      pointless). §1 updated with a "fusionné" note matching
+      how Mode 3 was handled.
+
+Decisions deferred to downstream slices (with hints)
+   - Reveal layout exact (#31) — minimum contract documented.
+   - ChallengeRules ↔ Ouzbek phase mapping (#32) — recommendation
+     written: drop `notesEnabled = false` from Ouzbek config
+     (note is the pivot), single shared `listenCount` reset on
+     `finishGuessingP2` rather than two separate counters.
+   - Confirm modal before `revealOuzbekChain` (#27) — option
+     not obligation.
+
+Files changed
+   - PROJECT.md: §1 (Mode Ouzbek section + Mode 2 absorbed
+     note); §3.13 NEW (full design); §5.1 Phase enum extended;
+     §5.2 GameState shape extended with `mode` + Ouzbek fields;
+     §11 glossary (J3, J4, Mode defined; hand-off entry
+     reworded).
+   - CHANGELOG.md: dated entry referencing all PROJECT.md
+     deltas + summary of decisions.
+
+Verification
+   - bun run typecheck → clean
+   - bun run lint → 0 warnings, 0 errors (95 rules, 54 files)
+   - bun run format:check → clean (55 files)
+   - bun run test → 251/251 passing across 25 test files
+     (unchanged from #28 — pure docs slice)
+
+Notes for next agent
+   - #27 (Ouzbek tracer bullet) is now unblocked. It's a big
+     slice — ~7 new phase components, store extension, IDB
+     schema bump (optional fields), Menu button, end-to-end
+     manual test on mobile. Pattern to follow: read §3.13,
+     add the Ouzbek fields/actions to gameStore.ts, extend
+     Phase, write phase components reusing primitives, wire in
+     App.tsx. Test pattern: each phase RTL test + persistence
+     round-trip tests for the new optional fields.
+   - One subtle hint for #27: `permissionGranted()` currently
+     transitions `permission --> recordingA`. After #25's
+     design, it must branch on `mode`. Make sure the action's
+     unit test covers both branches before #31/#32 build on it.
+   - The §3.13 decisions are best-effort proposals; a future
+     HITL session may overrule them. If user pushes back on
+     (e.g.) the separate-fields choice, a follow-up CHANGELOG
+     entry + §3.13 patch can revise. None of the calls are
+     load-bearing on existing code.
+

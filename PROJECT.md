@@ -22,13 +22,21 @@ Un jeu local où :
 
 Le mode décrit ci-dessus. **C'est le seul mode implémenté en v1.** Les autres modes sont prévus mais hors scope MVP.
 
-### Mode 2 — Téléphone arabe (futur, v0.2)
+### Mode Téléphone Ouzbek (prévu v0.3)
 
-- Joueur 1 enregistre une phrase.
-- Joueur 2 écoute, prend des notes phonétiques (avec indications d'intonation).
-- Joueur 3 lit les notes et enregistre un nouveau vocal en suivant les indications.
-- Joueur 4 écoute (autant qu'il veut) et propose sa devinette.
-- Implique une étape "transcription phonétique" (texte) qui n'existe pas en Mode 1.
+Variante 4-joueurs en chaîne, basée sur le mécanisme d'inversion :
+
+1. **Joueur 1** enregistre une phrase.
+2. **Joueur 2** écoute la version **inversée** de J1 et écrit une note (transcription, indications, ce qu'il pense entendre).
+3. **Joueur 3** lit la note de J2 et enregistre un nouveau vocal en suivant ce qu'il comprend — **sans pouvoir écouter la version inversée de son propre enregistrement** (cf. §3.13).
+4. **Joueur 4** écoute la version **inversée** de l'enregistrement de J3 et donne sa réponse oralement à J1, qui valide en lançant le reveal.
+5. **Reveal** : la chaîne complète est lisible (les deux recordings dans les deux sens, la note en texte).
+
+Schéma de phases, store, persistance et "P3 sans reverse" détaillés en §3.13. Les slices d'implémentation (#27 tracer bullet, #31 reveal enrichi, #32 variante Challenge) ne devraient pas avoir à re-décider de ces points.
+
+### Mode 2 — Téléphone arabe — fusionné dans Mode Téléphone Ouzbek
+
+Variante prévue à l'origine avec une étape de transcription phonétique sans inversion audio. Absorbée dans le Mode Téléphone Ouzbek qui ajoute le double-twist d'inversion (J2 et J4 écoutent reverse) sans changer le format 4-joueurs en chaîne. La transcription phonétique disparaît : J2 écrit une note libre.
 
 ### Mode Challenge — Mode 1 + règles configurables (prévu v0.2)
 
@@ -229,6 +237,160 @@ Le design ci-dessus ne tranche pas les points suivants ; ils relèvent du contex
 - Animations / transitions visuelles entre phases — pas de décision écrite, défaut au composant.
 - Si `<ConfirmDialog>` est réutilisé dans `challengeConfig` pour valider le départ — option, pas obligation.
 
+### 3.13 Mode Téléphone Ouzbek — phases, store, persistance, hand-offs
+
+Variante 4-joueurs en chaîne (cf. §1). Cette section fixe la structure ; les slices d'implémentation (#27 tracer bullet, #31 reveal enrichi, #32 variante Challenge) ne devraient pas avoir à re-décider de ces points.
+
+#### Entrée depuis le menu — bouton séparé
+
+- **Un troisième bouton "Mode Ouzbek" sur l'écran Menu**, sous "Mode Challenge". Pas de toggle, pas d'écran de choix de mode imbriqué. Why: cohérent avec §3.12 ("entrée Mode Challenge — bouton séparé") — chaque mode a un setup distinct, un toggle bundlerait des flows incompatibles. Trois ou quatre boutons sur le menu reste lisible.
+
+#### Enum de phases
+
+Phases ajoutées à l'enum `Phase` (cf. §5.1) :
+
+```ts
+| 'recordingP1'   // J1 enregistre (max 15s, comme recordingA)
+| 'handoffP2'     // "Passe le téléphone à J2"
+| 'guessingP2'    // J2 écoute la reverse de P1 + écrit la note
+| 'handoffP3'     // "Passe le téléphone à J3"
+| 'recordingP3'   // J3 lit la note + enregistre (pas d'accès reverse — cf. ci-dessous)
+| 'handoffP4'     // "Passe le téléphone à J4"
+| 'guessingP4'    // J4 écoute la reverse de P3 + répond oralement à J1
+| 'revealOuzbek'  // chaîne complète lisible (deux recordings dans les deux sens, note)
+```
+
+Transitions linéaires :
+
+```
+menu --(startOuzbek)--> permission --(permissionGranted, mode='ouzbek')--> recordingP1
+recordingP1 --(finishRecordingP1)--> handoffP2
+handoffP2 --(startGuessingP2)--> guessingP2
+guessingP2 --(finishGuessingP2)--> handoffP3
+handoffP3 --(startRecordingP3)--> recordingP3
+recordingP3 --(finishRecordingP3)--> handoffP4
+handoffP4 --(startGuessingP4)--> guessingP4
+guessingP4 --(revealOuzbekChain)--> revealOuzbek
+revealOuzbek --(newOuzbekRound)--> recordingP1   (mode reste 'ouzbek')
+* --(backToMenu)--> menu                           (reset complet via INITIAL_STATE)
+```
+
+Why des hand-offs explicites (vs implicites comme en Mode 1) : avec 4 joueurs au lieu de 2, le téléphone change de main 3 fois par round. Un écran de hand-off entre chaque rôle évite que le joueur sortant garde le device par inertie (et fasse fuiter la phase suivante).
+
+Why `permissionGranted` partagé (et pas `permissionGrantedOuzbek` séparé) : la permission micro elle-même est neutre vis-à-vis du mode ; seule la phase de destination diffère. La discrimination via le champ `mode` (cf. §5.2) garde la state machine plate. `permissionDenied` et `retryPermission` sont aussi partagés.
+
+#### Schéma store — champs Ouzbek
+
+Cf. §5.2 pour le `GameState` complet. Trois champs ajoutés :
+
+- `ouzbekRecordingP1: Recording | null` — recording de J1, input du chain.
+- `ouzbekNoteP2: string` — la note de J2 (transcription libre, pas phonétique forcée).
+- `ouzbekRecordingP3: Recording | null` — recording de J3 (re-utterance basée sur la note).
+
+Pas de field pour P4 (J4 répond oralement, pas d'artefact à stocker).
+
+Pas de `ouzbekListenCountP2` / `ouzbekListenCountP4` dans le tracer bullet (#27) — la limite de ré-écoutes est une règle Challenge (#32), elle réutilisera le `listenCount` existant **par phase active** (cf. §3.12 — la sémantique du compteur est "écoutes pendant la phase guessing courante" et reset au passage de phase, à valider en #32).
+
+#### Actions Zustand
+
+Actions ajoutées :
+
+- `startOuzbek()` : `menu --> permission`, set `mode = 'ouzbek'`.
+- `finishRecordingP1(rec)` : `recordingP1 --> handoffP2`, écrit `ouzbekRecordingP1 = rec`.
+- `startGuessingP2()` : `handoffP2 --> guessingP2`.
+- `setOuzbekNoteP2(note)` : écrit `ouzbekNoteP2`, gardé par `phase === 'guessingP2'`.
+- `finishGuessingP2()` : `guessingP2 --> handoffP3`.
+- `startRecordingP3()` : `handoffP3 --> recordingP3`.
+- `finishRecordingP3(rec)` : `recordingP3 --> handoffP4`, écrit `ouzbekRecordingP3 = rec`.
+- `startGuessingP4()` : `handoffP4 --> guessingP4`.
+- `revealOuzbekChain()` : `guessingP4 --> revealOuzbek`. Pas de bool "validation J1" en store — le clic sur le bouton EST la validation.
+- `newOuzbekRound()` : `revealOuzbek --> recordingP1`, clear les trois champs `ouzbek*`. Ne touche pas `mode` (on reste en Ouzbek). Analogue de `newRound` pour Mode 1.
+
+Action partagée modifiée :
+
+- `permissionGranted()` : route vers `recordingA` si `mode === 'mode1'`, sinon `recordingP1`. Aucun nouveau callsite à introduire — le bouton "Réessayer" / la grant flow restent identiques.
+
+`backToMenu()` reste inchangée (reset complet via `INITIAL_STATE`, qui doit inclure `mode: 'mode1'` comme défaut neutre — équivalent au comportement actuel pour les écrans de menu).
+
+#### Règle "P3 sans accès reverse" — approche
+
+**Approche retenue : prop existante `lockDirection="forward"` sur `<AudioPlayer />`.**
+
+Si la phase `recordingP3` rend un `<AudioPlayer />` pour permettre à J3 de se réécouter avant de confirmer (recommandé pour l'UX — sinon J3 ne peut pas vérifier ce qu'il vient de dire), passer `lockDirection="forward"` désactive le bouton reverse exactement comme requis (cf. `src/components/AudioPlayer.tsx` lignes 177–178 : `reverseDisabled = lockDirection === "forward" || disabled`).
+
+Why cette approche (et pas les alternatives) :
+
+| Approche | Pour | Contre |
+|---|---|---|
+| **(a) `lockDirection="forward"`** | Réutilise un mécanisme existant. Le bouton reverse reste visible mais inerte (affordance claire : "tu ne peux pas écouter à l'envers ici"). J3 peut écouter forward pour vérifier sa diction. | (aucun — c'est exactement la sémantique demandée) |
+| (b) Pas d'AudioPlayer du tout en `recordingP3` | Garantit zéro accès, même par bug. | J3 ne peut plus vérifier sa prise. Friction UX (re-record sans pouvoir écouter). |
+| (c) Nouveau prop `hideReverse` (reverse button absent) | Plus défensif que (a). | Code mort (un prop pour un seul cas), redondant avec `lockDirection`. |
+
+**Décision : (a).** Si HITL test révèle que J3 a tendance à pré-fuiter le contenu en se réécoutant trop, on retombera sur (b) dans une slice ultérieure. Le coût d'un revert est nul.
+
+Note : J3 ne doit PAS voir `ouzbekRecordingP1` non plus (cela reverse-leak P1). La phase `recordingP3` ne rend que la note de J2 (texte) + `<AudioRecorder />` + après prise, optionnellement `<AudioPlayer recording={ouzbekRecordingP3} lockDirection="forward" />`. Aucune référence à `ouzbekRecordingP1` dans cette phase.
+
+#### Persistance IndexedDB
+
+Schéma `PersistedState` étendu (cf. `src/store/persistence.ts`) :
+
+```ts
+type PersistedPhase =
+  // Mode 1 / Challenge (existant)
+  | "guessing" | "confirmEnd" | "reveal"
+  // Mode Ouzbek (nouveau)
+  | "handoffP2" | "guessingP2" | "handoffP3"
+  | "handoffP4" | "guessingP4" | "revealOuzbek";
+
+type PersistedState = {
+  version: 1;
+  phase: PersistedPhase;
+  mode: 'mode1' | 'ouzbek';
+  // existant — Mode 1 / Challenge
+  originalRecording: PersistedRecording | null;
+  guessRecording: PersistedRecording | null;
+  notes: string;
+  listenCount: number;
+  challengeRules: PersistedChallengeRules | null;
+  guessingStartedAt: number | null;
+  // nouveau — Mode Ouzbek
+  ouzbekRecordingP1: PersistedRecording | null;
+  ouzbekNoteP2: string;
+  ouzbekRecordingP3: PersistedRecording | null;
+};
+```
+
+**Phases persistables Ouzbek** : `handoffP2`, `guessingP2`, `handoffP3`, `handoffP4`, `guessingP4`, `revealOuzbek`. **Non persistables** : `recordingP1` et `recordingP3` (enregistrement actif via `MediaRecorder` impossible à reprendre proprement après lock — symétrique avec `recordingA` non-persistable en Mode 1). Si l'app reload pendant `recordingP3`, IDB pointe encore sur `handoffP3` (la transition vers `recordingP3` ne re-sauvegarde pas), donc J3 retombe sur le hand-off et redémarre l'enregistrement.
+
+**Compatibilité descendante** : suivre le pattern établi par `challengeRules` et `guessingStartedAt` (#26, #28) — champs lus en optionnel à la rehydratation (`raw.mode ?? 'mode1'`, `raw.ouzbekRecordingP1 ?? null`, `raw.ouzbekNoteP2 ?? ""`, `raw.ouzbekRecordingP3 ?? null`), sans bump de `version`. Un save pré-Ouzbek se rehydrate en Mode 1 strict.
+
+**Choix de version** : ne PAS bumper `version: 1 → 2`. Le pattern optionnel est déjà en place (cf. `src/store/persistence.ts` lignes 53–57), reste cohérent. Si plus tard une migration non-triviale s'impose (renommage d'un champ), on bumpera proprement à ce moment-là — le coût d'un V2 + migration n'est pas justifié pour ajouter quatre champs optionnels.
+
+#### Reuse vs duplication
+
+Cf. §3.7 — pas d'abstraction "Round générique" prématurée. Pour Ouzbek :
+
+- **Primitives réutilisées telles quelles** : `<AudioRecorder />`, `<AudioPlayer />` (avec `lockDirection`), `<NotesEditor />`, `<ConfirmDialog />`. Aucune modification.
+- **Phases écrites en neuf** : `RecordingP1Phase`, `HandoffP2Phase`, `GuessingP2Phase`, `HandoffP3Phase`, `RecordingP3Phase`, `HandoffP4Phase`, `GuessingP4Phase`, `RevealOuzbekPhase`. Pas de tentative de partager du code avec `RecordingAPhase` / `GuessingPhase` / `RevealPhase` — l'orchestration est mode-spécifique, et la duplication est limitée à du JSX de structure.
+- **Reveal séparé** : `RevealOuzbekPhase` distinct de `RevealPhase`. Si la duplication devient gênante après #32, on factorisera (cf. #31 "pas d'abstraction prématurée avec le reveal Mode 1").
+
+#### Hand-off — copy proposée
+
+Format inspiré de §3.2 (hand-off explicite) :
+
+- `handoffP2` : "Joueur 2, prends le téléphone. Joueurs 1, 3 et 4 : ne regardez pas l'écran." → bouton "C'est moi, J2".
+- `handoffP3` : idem pour J3.
+- `handoffP4` : idem pour J4.
+
+Pas de hand-off pour J1 entrant — il vient juste de cliquer "Mode Ouzbek" sur le menu. Symétrique à Mode 1 (pas de hand-off avant `recordingA`).
+
+#### Décisions explicitement reportées aux slices d'implémentation
+
+- **Layout exact du `RevealOuzbekPhase`** (ordre des players, mise en avant de la note) — décidé en #31. Le contrat minimal : tout est lisible, deux recordings dans les deux sens, note en texte (cf. acceptance criteria #31).
+- **Mapping des règles `ChallengeRules` aux phases Ouzbek** (timer sur `guessingP4` seul ou aussi `guessingP2` ? notes désactivées a-t-il du sens en Ouzbek puisque la note est le pivot ?) — décidé en #32 lors du triage. La règle `notesEnabled = false` casserait le jeu : option recommandée = retirer cette règle de la config Ouzbek (ou la griser avec un tooltip explicatif).
+- **Compteur de ré-écoutes par phase guessing** (un seul `listenCount` partagé qui se reset à `finishGuessingP2` ? deux compteurs séparés `listenCountP2` / `listenCountP4` ?) — décidé en #32. Recommandation : un seul `listenCount` partagé qui se reset à `finishGuessingP2`, pour rester cohérent avec la sémantique actuelle ("écoutes pendant la phase guessing courante").
+- **Modal de confirmation avant `revealOuzbekChain`** (réutiliser `<ConfirmDialog>` pour "Tout révéler ?") — option, pas obligation. Décidé au moment de #27.
+
 ---
 
 ## 4. Stack technique
@@ -255,19 +417,28 @@ Le design ci-dessus ne tranche pas les points suivants ; ils relèvent du contex
 
 ```
 type Phase =
+  // partagé
   | 'menu'
   | 'challengeConfig' // écran de config Mode Challenge (cf. §3.12)
   | 'permission'      // demande micro
   | 'permissionDenied'
-  | 'handoffA'        // "Joueur A, éloigne-toi"
+  // Mode 1 / Mode Challenge
   | 'recordingA'      // A enregistre (max 15s)
-  | 'handoffB'        // "Passe le téléphone à B"
   | 'guessing'        // B écoute, note, enregistre
   | 'confirmEnd'      // confirmation "Êtes-vous sûr ?"
   | 'reveal'          // tout est lisible, dans les 2 sens
+  // Mode Téléphone Ouzbek (cf. §3.13)
+  | 'recordingP1'     // J1 enregistre
+  | 'handoffP2'       // "Passe à J2"
+  | 'guessingP2'      // J2 écoute reverse de P1 + écrit la note
+  | 'handoffP3'       // "Passe à J3"
+  | 'recordingP3'     // J3 lit la note + enregistre (pas d'accès reverse — cf. §3.13)
+  | 'handoffP4'       // "Passe à J4"
+  | 'guessingP4'      // J4 écoute reverse de P3 + répond oralement
+  | 'revealOuzbek'    // chaîne complète lisible
 ```
 
-Transitions linéaires, pilotées par actions Zustand (`startGame`, `confirmHandoff`, `startRecordingA`, `finishRecordingA`, `submitGuess`, `confirmEnd`, `cancelEnd`, `newRound`, `backToMenu`).
+Transitions linéaires, pilotées par actions Zustand. Le `mode` du round (`'mode1' | 'ouzbek'`) est porté par un champ dédié au store (cf. §5.2) et discrimine les transitions partagées (`permissionGranted` route vers `recordingA` ou `recordingP1` selon le mode). Pas de routeur ; pas de FSM imbriquée — un seul enum `Phase` plat suffit.
 
 ### 5.2 Store Zustand (forme)
 
@@ -278,12 +449,23 @@ type GameState = {
   // phase machine
   phase: Phase;
 
-  // recordings (volatile, in-memory only)
+  // mode du round actif (cf. §3.13). Discrimine la branche
+  // post-permission (recordingA vs recordingP1) et l'identité du round
+  // jusqu'au backToMenu.
+  mode: 'mode1' | 'ouzbek';
+
+  // Mode 1 / Mode Challenge
   originalRecording: Recording | null;   // A's recording
   guessRecording: Recording | null;       // B's last recording (overwrites)
-
-  // notes
   notes: string;
+  listenCount: number;
+  challengeRules: ChallengeRules | null;
+  guessingStartedAt: number | null;
+
+  // Mode Téléphone Ouzbek (cf. §3.13)
+  ouzbekRecordingP1: Recording | null;   // J1's recording (input du chain)
+  ouzbekNoteP2: string;                   // note de J2 (transcription libre)
+  ouzbekRecordingP3: Recording | null;   // J3's recording (re-utterance)
 
   // actions
   startGame: () => void;
@@ -297,6 +479,8 @@ type Recording = {
   blob: Blob; // source Opus/WebM, retenu pour persistance IDB (cf. §3.5)
 };
 ```
+
+Why champs Ouzbek séparés (vs réutilisation de `originalRecording / notes / guessRecording`) : la sémantique diffère assez pour justifier la duplication. `originalRecording` et `guessRecording` portent une intention "Mode 1" (l'original à deviner / la proposition de B) ; les utiliser pour P1 et P3 forcerait les futurs lecteurs du store à tenir un mapping mental "ce champ veut dire X en Mode 1, Y en Ouzbek". Trois champs en plus est un coût accepté pour rester littéral. Cohérent avec §3.7 ("primitives réutilisables, pas d'abstraction Round générique"). Si la duplication devient gênante après #32, on factorisera.
 
 ### 5.3 Pipeline audio
 
@@ -492,13 +676,15 @@ Note : "Mode 2 (téléphone arabe)" et "Mode 3 (écoutes limitées)" de la roadm
 - **Round** — une séquence complète enregistrement → devinage → révélation.
 - **Phase** — état courant de la machine à état (`menu`, `recordingA`, etc.).
 - **Recording** — un couple `{ forward: AudioBuffer, reverse: AudioBuffer }` représentant un enregistrement réversible.
-- **Joueur 1** (copy UI) / **A** (code interne) — le joueur qui enregistre la phrase originale.
-- **Joueur 2** (copy UI) / **B** (code interne) — le joueur qui devine. Why: la copy utilisateur utilise des numéros (cohérence avec les modes multi-joueurs à venir où on parlera de Joueur 1/2/3/4) ; les noms de phases internes (`handoffA`, `recordingA`, `originalRecording`, `guessRecording`) restent en A/B pour limiter le diff et éviter les régressions sur la persistance IndexedDB.
-- **Original recording** — l'enregistrement du Joueur 1 (la phrase à deviner). Stocké en interne sous `originalRecording`.
-- **Guess recording** — la dernière prise du Joueur 2 (sa proposition vocale). Stocké en interne sous `guessRecording`.
+- **Joueur 1** (copy UI) / **A** (code interne, Mode 1) — le joueur qui enregistre la phrase originale.
+- **Joueur 2** (copy UI) / **B** (code interne, Mode 1) — le joueur qui devine. Why: la copy utilisateur utilise des numéros (cohérence avec les modes multi-joueurs à venir où on parlera de Joueur 1/2/3/4) ; les noms de phases internes Mode 1 (`recordingA`, `originalRecording`, `guessRecording`) restent en A/B pour limiter le diff et éviter les régressions sur la persistance IndexedDB.
+- **Joueur 3** / **Joueur 4** (Mode Ouzbek uniquement) — re-récorder (J3, lit la note de J2 et enregistre) et résolveur final (J4, écoute reverse de P3, répond oralement). Why : nommage en P1/P2/P3/P4 dans le code Ouzbek (`recordingP1`, `ouzbekRecordingP3`, etc.) — pas d'alias A/B/C/D parce que A/B portent une sémantique Mode 1 qui ne se transpose pas.
+- **Mode** — `'mode1' | 'ouzbek'` ; identité structurelle du round actif. Discrimine la branche post-permission. Distinct de `challengeRules` qui ajoute des contraintes orthogonales aux deux modes.
+- **Original recording** — l'enregistrement du Joueur 1 en Mode 1 (la phrase à deviner). Stocké en interne sous `originalRecording`. En Mode Ouzbek, l'équivalent (recording de J1 en haut de chain) est stocké sous `ouzbekRecordingP1`.
+- **Guess recording** — la dernière prise du Joueur 2 (sa proposition vocale) en Mode 1. Stocké en interne sous `guessRecording`. Pas d'équivalent en Mode Ouzbek (J4 répond oralement, sans recording).
 - **Direction** — `'forward' | 'reverse'` ; sens dans lequel un Recording est joué par un AudioPlayer.
 - **Playback rate** — multiplicateur de vitesse appliqué au player (0.25 à 2.0).
-- **Hand-off** — transition entre joueurs avec écran dédié pour le passage du téléphone.
+- **Hand-off** — transition entre joueurs avec écran dédié pour le passage du téléphone (cf. §3.2). Mode Ouzbek introduit trois hand-offs explicites (`handoffP2`, `handoffP3`, `handoffP4`) parce que 4 joueurs implique plus de friction de coordination que les 2 joueurs du Mode 1.
 
 ---
 

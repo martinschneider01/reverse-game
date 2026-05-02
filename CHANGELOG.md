@@ -2,6 +2,33 @@
 
 Décisions structurelles modifiées par rapport à la version initiale de `PROJECT.md`. Une entrée par décision révisée, datée, justifiée. Format libre (pas de Keep-a-Changelog).
 
+## 2026-05-02 — Mode Téléphone Ouzbek — phases, store, persistance, hand-offs, fusion de l'ancien Mode 2
+
+**Quoi** : design slice (#25) pour le futur Mode Téléphone Ouzbek — variante 4-joueurs en chaîne où J2 et J4 écoutent en reverse, J3 ré-enregistre depuis une note. Aucun code produit ; cette entrée trace les décisions documentées en §3.13 de `PROJECT.md`.
+
+**Décisions PROJECT.md affectées** :
+- §1 (Vision) — l'ancien "Mode 2 — Téléphone arabe" est absorbé dans Mode Téléphone Ouzbek (le double-twist d'inversion remplace la transcription phonétique pure) ; nouvelle section "Mode Téléphone Ouzbek".
+- §3.13 (NOUVELLE) — enum de phases, schéma store, actions Zustand, règle "P3 sans accès reverse", persistance IndexedDB, copy hand-off, reuse vs duplication.
+- §5.1 (state machine) — phases ajoutées (`recordingP1`, `handoffP2`, `guessingP2`, `handoffP3`, `recordingP3`, `handoffP4`, `guessingP4`, `revealOuzbek`) et discrimination via le champ `mode`.
+- §5.2 (store) — champs Ouzbek séparés (`ouzbekRecordingP1`, `ouzbekNoteP2`, `ouzbekRecordingP3`) plutôt que réutilisation des champs Mode 1, et nouveau champ discriminant `mode: 'mode1' | 'ouzbek'`.
+- §11 (glossaire) — Joueur 3, Joueur 4, Mode défini.
+
+**Pourquoi** : sans schéma figé, chaque slice (#27 tracer bullet, #31 reveal, #32 Challenge variant) re-déciderait du nommage des phases, de la sémantique du store, et de l'enforcement de la règle "P3 sans reverse" — au risque de produire des PRs incompatibles. La fusion de l'ancien Mode 2 dans Mode Ouzbek élimine un mode redondant : l'inversion audio est l'identité du jeu, un mode "téléphone arabe sans inversion" n'apporte rien de spécifique.
+
+**Comment (résumé des décisions clés)** :
+- **Phase enum étendu** par 8 phases Ouzbek dans le même `Phase` plat (pas de FSM imbriquée). Discrimination des transitions partagées (`permissionGranted`) via un champ `mode: 'mode1' | 'ouzbek'` au store.
+- **Champs Ouzbek séparés** (vs réutilisation de `originalRecording / notes / guessRecording`). Why : sémantique trop différente, le coût de 3 fields est inférieur au coût mental d'un mapping cross-mode.
+- **"P3 sans reverse"** : prop existante `lockDirection="forward"` sur `<AudioPlayer />` (la sémantique est exacte — `reverseDisabled = lockDirection === "forward" || disabled`). Pas de nouveau prop, pas de fork.
+- **Persistance** : champs optionnels lus avec `?? null` / `?? ""`, pas de bump de version (cohérent avec le pattern `challengeRules` / `guessingStartedAt` de #26 / #28). Phases persistables Ouzbek = toutes sauf `recordingP1` et `recordingP3` (enregistrement actif non-reprenable). Mode persisté pour rehydrater dans la bonne branche.
+- **Reveal** : `RevealOuzbekPhase` séparé, pas de fork de `RevealPhase`. Factorisation après #32 si gênante.
+- **Hand-offs explicites** entre J2/J3/J4 ; pas de hand-off pour J1 entrant (symétrique à Mode 1 sans hand-off avant `recordingA`).
+
+**Anti-goals préservés** : pas de scoring/win-lose en Ouzbek non plus, pas d'abstraction `Round` générique, pas de FSM imbriquée par mode, pas de routeur ajouté.
+
+**Slices débloquées** : #27 (tracer bullet end-to-end), #31 (reveal enrichi, dépendant de #27), #32 (Ouzbek Challenge, dépendant de #27 + #28 + #30).
+
+**Décisions explicitement reportées** : layout exact du reveal (#31), mapping `ChallengeRules ↔ phases Ouzbek` et compteurs de ré-écoutes par phase (#32), modal de confirmation avant `revealOuzbekChain` (option, #27).
+
 ## 2026-05-02 — Mode Challenge — schéma de règles, phase de config, fusion de l'ancien Mode 3
 
 **Quoi** : design slice (#24) pour le futur Mode Challenge — variante de Mode 1 avec règles configurables (timer, notes activées, limite ré-écoutes). Aucun code produit ; cette entrée trace les décisions documentées en §3.12 de `PROJECT.md`.
