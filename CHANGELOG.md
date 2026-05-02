@@ -2,6 +2,20 @@
 
 Décisions structurelles modifiées par rapport à la version initiale de `PROJECT.md`. Une entrée par décision révisée, datée, justifiée. Format libre (pas de Keep-a-Changelog).
 
+## 2026-05-02 — Confirmation "Êtes-vous sûr ?" en modal au-dessus de l'écran de devinage
+
+**Quoi** : la phase `confirmEnd` n'est plus rendue en plein écran (composant `ConfirmEndPhase` supprimé). À la place, `App.tsx` rend `<GuessingPhase>` ET un `<ConfirmDialog>` overlay quand `phase === 'confirmEnd'`. La state machine et le schéma de persistance IndexedDB sont inchangés.
+
+**Décision PROJECT.md affectée** : §3.4 (fin de round et révélation).
+
+**Pourquoi** : un plein-écran cassait le contexte visuel (notes, recording, compteur disparaissaient pendant la confirmation). Un modal préserve le contexte derrière le backdrop. Bonus : on extrait un `<ConfirmDialog>` réutilisable qui servira aux écrans de configuration des futurs modes Challenge (#26) et Ouzbek (#27).
+
+**Comment** :
+- `src/components/ConfirmDialog.tsx` : composant générique avec backdrop cliquable (= annulation), Escape (= annulation), focus initial sur le bouton "Annuler", titre + message + variantes de bouton (`primary` / `danger`), support de `children` pour du contenu custom.
+- `src/App.tsx` : `phase === 'guessing' || phase === 'confirmEnd'` rend `<GuessingPhase>` ; `phase === 'confirmEnd'` rend en plus le `<ConfirmDialog>`.
+- Phase `confirmEnd` **conservée** dans l'enum et les actions du store (`endGuessing`, `cancelEnd`, `confirmEnd`). Why: éviter une migration du schéma IDB et préserver la reprise après lock screen pendant la modal.
+- `ConfirmEndPhase.tsx` et son test supprimés (rendu remplacé par la composition App.tsx + ConfirmDialog).
+
 ## 2026-05-02 — Persistance IndexedDB d'un round actif
 
 **Quoi** : un round actif (phases `guessing`, `confirmEnd`, `reveal`) est persisté en IndexedDB et restauré à l'ouverture suivante de l'app.

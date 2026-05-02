@@ -11,8 +11,8 @@ import { PermissionPhase } from "@/phases/PermissionPhase";
 import { PermissionDeniedPhase } from "@/phases/PermissionDeniedPhase";
 import { RecordingAPhase } from "@/phases/RecordingAPhase";
 import { GuessingPhase } from "@/phases/GuessingPhase";
-import { ConfirmEndPhase } from "@/phases/ConfirmEndPhase";
 import { RevealPhase } from "@/phases/RevealPhase";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 const HAS_IDB = typeof indexedDB !== "undefined";
 
@@ -28,6 +28,8 @@ async function rehydrateRecording(p: PersistedRecording, ctx: AudioContext): Pro
 export function App() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const phase = useGameStore((s) => s.phase);
+  const confirmEnd = useGameStore((s) => s.confirmEnd);
+  const cancelEnd = useGameStore((s) => s.cancelEnd);
   const [hydrated, setHydrated] = useState(!HAS_IDB);
 
   useEffect(() => installIosAudioUnlock(), []);
@@ -94,9 +96,19 @@ export function App() {
       {phase === "permission" && <PermissionPhase />}
       {phase === "permissionDenied" && <PermissionDeniedPhase />}
       {phase === "recordingA" && <RecordingAPhase audioContextFactory={getAudioContext} />}
-      {phase === "guessing" && <GuessingPhase audioContextFactory={getAudioContext} />}
-      {phase === "confirmEnd" && <ConfirmEndPhase />}
+      {(phase === "guessing" || phase === "confirmEnd") && (
+        <GuessingPhase audioContextFactory={getAudioContext} />
+      )}
       {phase === "reveal" && <RevealPhase audioContextFactory={getAudioContext} />}
+      {phase === "confirmEnd" && (
+        <ConfirmDialog
+          title="Êtes-vous sûr ?"
+          message="Mettre fin au round révélera l'enregistrement original. Cette action est définitive."
+          confirmVariant="danger"
+          onConfirm={confirmEnd}
+          onCancel={cancelEnd}
+        />
+      )}
     </main>
   );
 }

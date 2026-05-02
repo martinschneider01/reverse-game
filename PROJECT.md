@@ -80,7 +80,7 @@ Chaque décision est suivie d'un `Why:` court. Si tu envisages d'aller à l'inve
 
 ### 3.4 Fin de round et révélation
 
-- **Bouton "Fin"** avec confirmation ("Êtes-vous sûr ?"). Why: le user veut une protection contre le clic accidentel.
+- **Bouton "Fin"** avec confirmation ("Êtes-vous sûr ?") rendue en **modal au-dessus de l'écran de devinage** (composant `<ConfirmDialog />` réutilisable). Why: le user veut une protection contre le clic accidentel ; un modal préserve le contexte (notes, recording, compteur visibles derrière) là où l'ancien plein-écran cassait le flow visuel. La phase `confirmEnd` reste dans la state machine pour ne pas migrer le schéma de persistance IndexedDB ; seule la composition de rendu change (App.tsx rend `<GuessingPhase>` ET `<ConfirmDialog>` quand `phase === 'confirmEnd'`).
 - **Écran de révélation** : (1) le vocal original de A — lisible à l'endroit ET à l'envers, (2) le dernier vocal de B — lisible à l'endroit ET à l'envers, (3) les notes en texte, (4) bouton "Nouvelle partie", (5) bouton "Retour à l'accueil". **Tous les players du reveal supportent un toggle direction.**
 - **Pas de tracking win/lose**, pas de cérémonie 🎉 / 😅.
 
@@ -230,6 +230,7 @@ type Recording = {
 - `<AudioRecorder onRecorded={(rec) => ...} maxDurationMs={15000} />`
 - `<AudioPlayer recording={Recording} direction="forward"|"reverse" />` — interne : slider vitesse, bouton play/pause, toggle direction
 - `<NotesEditor value notes onChange />`
+- `<ConfirmDialog title message onConfirm onCancel confirmVariant />` — modal réutilisable (backdrop, Escape, focus initial sur "Annuler"). Servira aussi aux écrans de configuration des modes Challenge / Ouzbek.
 
 Ces primitives sont indépendantes des phases et seront réutilisées par Mode 2 / Mode 3.
 

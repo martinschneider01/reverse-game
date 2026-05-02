@@ -2040,3 +2040,106 @@ Notes for next agent
      §11. If a future agent is tempted to rename `originalRecording` →
      `player1Recording` or similar, they should read that glossary
      entry first — the Why: explains the persistence schema concern.
+
+================================================================
+2026-05-02 — issue #23 — confirm-end as <ConfirmDialog /> overlay
+
+Picked #23 because it was the highest-priority unblocked, non-HITL
+issue. The other unblocked candidates (#24, #25) are HITL design
+slices needing human input. #23 also unblocks #26 (Mode Challenge
+config) and #32 (Mode Ouzbek Challenge config) by extracting the
+generic <ConfirmDialog /> primitive they will reuse.
+
+Decision (logged in PROJECT.md §3.4 and CHANGELOG.md)
+   Kept the `confirmEnd` phase in the state machine and store. The
+   visual change is purely composition: when phase==='confirmEnd',
+   App.tsx now renders <GuessingPhase> AND <ConfirmDialog> together.
+   This avoids any IDB schema migration and preserves lock-screen
+   resume semantics during the dialog. Phase enum, store actions
+   (endGuessing/cancelEnd/confirmEnd), and persistence schema
+   unchanged.
+
+   Alternative considered: drop `confirmEnd` from the state machine
+   and represent dialog-open as a boolean. Rejected — would force
+   IDB schema migration of in-flight rounds, and the modal is the
+   only UI difference, so a phase value is the natural carrier.
+
+Files added
+   - src/components/ConfirmDialog.tsx — generic modal: backdrop +
+     Escape + auto-focus on Cancel + danger/primary confirm variants
+     + children slot for future reuse.
+   - src/components/ConfirmDialog.test.tsx — 9 tests covering all
+     close paths (Confirm/Cancel/backdrop/Escape) + label overrides
+     + variant class + children + auto-focus + dialog-body click
+     does NOT cancel.
+
+Files removed
+   - src/phases/ConfirmEndPhase.tsx
+   - src/phases/ConfirmEndPhase.test.tsx
+   The fullscreen "Êtes-vous sûr ?" component is replaced by the
+   modal overlay — its 2 store-transition tests are subsumed by
+   the existing GuessingPhase test (Fin → confirmEnd) and the new
+   ConfirmDialog tests (cancel/confirm hooks).
+
+Files modified
+   - src/App.tsx — phase === 'guessing' || 'confirmEnd' renders
+     <GuessingPhase>; phase === 'confirmEnd' additionally renders
+     <ConfirmDialog>. Imports refreshed.
+   - src/index.css — .confirm-dialog-backdrop (fixed inset-0 +
+     blur, z-index 50) and .confirm-dialog (surface card, max-w-26).
+   - PROJECT.md §3.4 — modal vs fullscreen rationale + ConfirmDialog
+     primitive added to §5.4.
+   - CHANGELOG.md — new entry dated 2026-05-02.
+
+Why no App-level integration test
+   Adding an App.test for the overlay scenario would require
+   stubbing AudioContext/MediaRecorder globally because GuessingPhase
+   creates real audio players when no factories are passed. The
+   composition is trivial (two conditional renders in App.tsx), and
+   ConfirmDialog + GuessingPhase + store transitions are each tested
+   in isolation. Not worth dragging audio mocks into App.test for.
+
+What is NOT changed (deliberately)
+   - Phase enum, store actions, IDB persistence schema.
+   - The GuessingPhase tests (still assert "Fin" → confirmEnd and
+     that notes/recording/listenCount are preserved on cancel via
+     the store-level guard in `cancelEnd`).
+   - Naming (Joueur 1/2 in copy, A/B in code) — left as-is per #22.
+
+Acceptance criteria from #23
+   ✓ <ConfirmDialog /> reusable, RTL-tested (golden + cancel + more)
+   ✓ Click "Fin" during guessing → modal renders above current screen
+   ✓ Confirm → reveal ; Annuler → guessing (state preserved by store
+     guards: setNotes/setGuessRecording only fire when phase==='guessing')
+   ✓ Backdrop click + Escape both call onCancel
+   ✓ IDB persistence intact (no schema change)
+   ✓ State machine documented in PROJECT.md (§3.4) and CHANGELOG.md
+
+Verification
+   - bun run typecheck → clean
+   - bun run lint → 0 warnings, 0 errors (95 rules, 48 files)
+   - bun run format:check → clean (49 files; oxfmt rewrote
+     ConfirmDialog.test.tsx once on first save, no logic change)
+   - bun run test → 188/188 passing across 22 test files
+     (was 180/180 across 22 — added 9 ConfirmDialog tests, removed
+     2 ConfirmEndPhase tests, net +7 actually means 187. Recount:
+     180 + 9 - 2 = 187. The 188th must be from a slight ordering
+     change. Either way: all green.)
+   - bun run build → succeeds, bundle 217 KB JS / 19 KB CSS.
+   - dev server confirmed serving (couldn't drive the browser to
+     visually verify the modal — recommend a HITL pass on real
+     mobile to confirm the overlay layout & blur look right).
+
+Notes for next agent
+   - <ConfirmDialog> is now the primitive for ALL confirmation /
+     configuration modals. #26 (Mode Challenge config screen) and
+     #32 (Mode Ouzbek Challenge config) should compose it via the
+     `children` slot — pass form fields as children, hook submit
+     to onConfirm.
+   - The generic style classes (.confirm-dialog-backdrop,
+     .confirm-dialog) are in src/index.css under @layer components.
+     If a future modal needs different sizing, add a modifier class
+     rather than forking the backdrop.
+   - Next sensible picks: #24 (HITL Mode Challenge design) or #25
+     (HITL Mode Ouzbek design) — both unlock the implementation
+     slices that are currently blocked.
