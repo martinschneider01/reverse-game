@@ -31,9 +31,12 @@ export function RevealOuzbekPhase({ audioContextFactory, playerFactory }: Reveal
     <section>
       <p className="kicker">Round terminé</p>
       <h2>Révélation</h2>
+      <p aria-label="Chaîne du round">J1 → J2 → J3 → J4</p>
 
       <div className="card">
-        <h3>Enregistrement de J1</h3>
+        <p className="kicker">Joueur 1</p>
+        <h3>Enregistrement original</h3>
+        <p>Lisible à l'endroit et à l'envers.</p>
         <AudioPlayer
           recording={ouzbekRecordingP1}
           audioContext={ctx}
@@ -42,7 +45,8 @@ export function RevealOuzbekPhase({ audioContextFactory, playerFactory }: Reveal
       </div>
 
       <div className="card">
-        <h3>Note de J2</h3>
+        <p className="kicker">Joueur 2</p>
+        <h3>Note transcrite à l'écoute (à l'envers de J1)</h3>
         {ouzbekNoteP2 === "" ? (
           <p className="reveal-notes">
             <em>Aucune note prise.</em>
@@ -53,12 +57,22 @@ export function RevealOuzbekPhase({ audioContextFactory, playerFactory }: Reveal
       </div>
 
       <div className="card">
-        <h3>Enregistrement de J3</h3>
+        <p className="kicker">Joueur 3</p>
+        <h3>Enregistrement à partir de la note</h3>
+        <p>Lisible à l'endroit et à l'envers.</p>
         <AudioPlayer
           recording={ouzbekRecordingP3}
           audioContext={ctx}
           playerFactory={playerFactory}
         />
+      </div>
+
+      <div className="card">
+        <p className="kicker">Joueur 4</p>
+        <h3>Réponse à voix haute</h3>
+        <p className="reveal-notes" aria-label="Réponse de J4">
+          <em>J4 a annoncé sa réponse oralement à J1 — non enregistrée.</em>
+        </p>
       </div>
 
       <button type="button" onClick={newOuzbekRound}>

@@ -50,17 +50,41 @@ beforeEach(() => {
 const audioContextFactory = (): AudioContext => ({}) as AudioContext;
 
 describe("<RevealOuzbekPhase />", () => {
-  it("renders the J1 recording, J2 note, and J3 recording", () => {
+  it("renders the full chain in order: J1 audio, J2 note, J3 audio, J4 info", () => {
     render(
       <RevealOuzbekPhase
         audioContextFactory={audioContextFactory}
         playerFactory={makeFakePlayer}
       />,
     );
-    expect(screen.getByRole("heading", { name: /enregistrement de j1/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /note de j2/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /enregistrement de j3/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/chaîne du round/i)).toHaveTextContent("J1 → J2 → J3 → J4");
+    const kickers = screen.getAllByText(/^Joueur [1-4]$/i).map((n) => n.textContent);
+    expect(kickers).toEqual(["Joueur 1", "Joueur 2", "Joueur 3", "Joueur 4"]);
     expect(screen.getByLabelText(/note de j2/i)).toHaveTextContent("transcription par J2");
+    expect(screen.getByLabelText(/réponse de j4/i)).toBeInTheDocument();
+  });
+
+  it("provides forward+reverse playback on both J1 and J3 recordings", () => {
+    render(
+      <RevealOuzbekPhase
+        audioContextFactory={audioContextFactory}
+        playerFactory={makeFakePlayer}
+      />,
+    );
+    // Two recordings × two directions each = four direction buttons (none locked).
+    expect(screen.getAllByRole("button", { name: /lecture à l'endroit/i })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: /lecture à l'envers/i })).toHaveLength(2);
+  });
+
+  it("falls back to a placeholder when J2 took no note", () => {
+    useGameStore.setState({ ouzbekNoteP2: "" });
+    render(
+      <RevealOuzbekPhase
+        audioContextFactory={audioContextFactory}
+        playerFactory={makeFakePlayer}
+      />,
+    );
+    expect(screen.getByText(/aucune note prise/i)).toBeInTheDocument();
   });
 
   it("clicking 'Nouvelle partie' triggers newOuzbekRound", async () => {

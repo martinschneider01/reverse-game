@@ -2946,3 +2946,81 @@ Notes pour le prochain agent
    - Aucun déchet laissé : pas de TODO, pas de fallback, pas
      de feature flag. La fonctionnalité est complète selon
      les acceptance criteria de #27.
+
+
+2026-05-02 — Issue #31 (Mode Ouzbek — reveal enrichi avec chaîne complète)
+
+Polish de l'écran de révélation Ouzbek. Tracer bullet (#27)
+laissait un layout minimal (3 cartes : J1 audio, J2 note, J3
+audio). #31 ajoute la quatrième carte "J4 réponse (info)" et
+clarifie la narration de la chaîne.
+
+Changements (1 fichier de prod, 1 fichier de test)
+
+src/phases/RevealOuzbekPhase.tsx
+   - En-tête "Chaîne du round" : "J1 → J2 → J3 → J4" (visible
+     d'un coup d'œil, accessible via aria-label).
+   - Chaque carte gagne un kicker "Joueur N" + un sous-titre
+     contextuel décrivant ce que le joueur a fait :
+       J1 → "Enregistrement original"
+       J2 → "Note transcrite à l'écoute (à l'envers de J1)"
+       J3 → "Enregistrement à partir de la note"
+       J4 → "Réponse à voix haute"
+   - Cartes J1 et J3 gardent leur <AudioPlayer /> par défaut
+     (forward + reverse), conformément à la AC "lisible dans
+     les deux sens".
+   - Nouvelle carte J4 avec texte info "J4 a annoncé sa réponse
+     oralement à J1 — non enregistrée." (label aria "Réponse
+     de J4"). Pas d'audio puisque rien n'est enregistré — c'est
+     bien ce que prévoit la state machine (cf. GuessingP4Phase
+     qui ne capture rien).
+   - Boutons "Nouvelle partie" / "Retour au menu" inchangés.
+
+src/phases/RevealOuzbekPhase.test.tsx
+   - "renders the J1, J2, J3" → étendu en "renders the full
+     chain in order: J1 audio, J2 note, J3 audio, J4 info".
+     Vérifie l'ordre des kickers Joueur 1..4 et la présence du
+     header de chaîne.
+   - Nouveau : "provides forward+reverse playback on both J1
+     and J3 recordings" — couvre la AC "lisible dans les deux
+     sens" en comptant 2 boutons forward + 2 boutons reverse
+     (aucun lockDirection appliqué).
+   - Nouveau : "falls back to a placeholder when J2 took no
+     note" — cas existant mais désormais explicitement testé.
+
+Ce qui n'est PAS dans cette slice (par scope)
+
+   - Pas de factorisation avec RevealPhase (Mode 1). La
+     duplication reste limitée et l'issue interdit explicitement
+     l'abstraction prématurée (cf. PROJECT.md §3.7 et §6.3).
+   - Pas de changement du libellé "Retour au menu" → "Retour
+     à l'accueil" : la AC mentionne "à l'accueil" mais le reste
+     du codebase utilise "au menu" (RevealPhase, ChallengeConfig,
+     PermissionDenied). Garder cohérent — c'était déjà l'écriture
+     du tracer bullet #27, et le bouton routing vers backToMenu
+     remplit l'intention de l'AC. Refactor global du libellé hors
+     scope.
+   - Pas de modal "Tout révéler ?" (option #3.13 — non obligatoire).
+
+Verification (toutes vertes)
+
+   - bun run typecheck → clean
+   - bun run lint → 0 warnings, 0 errors (95 rules, 66 files)
+   - bun run format:check → clean (67 files)
+   - bun run test → 302/302 passing across 31 test files
+     (était 300/300 — +2 tests, 0 nouveau fichier)
+
+Notes pour le prochain agent
+
+   - #32 (Mode Téléphone Ouzbek Challenge — config + application
+     des règles) est la dernière issue Ouzbek. C'est la plus
+     grosse mais bien spec'ée. Voir les notes précédentes (#27)
+     pour le pattern : variante ChallengeConfigPhase → flow
+     Ouzbek + challengeRules. Subtilité : la règle notesEnabled
+     n'a pas de sens en Ouzbek (la note est le pivot du jeu) ;
+     décision triage à reprendre au début.
+   - Le RevealOuzbekPhase ne factorise PAS avec RevealPhase.
+     C'est volontaire (cf. PROJECT.md §3.7 + §6.3). Si #32 ajoute
+     un toggle "afficher les notes" dépendant de challengeRules,
+     copier le pattern de RevealPhase plutôt qu'extraire un
+     RevealCommon.
