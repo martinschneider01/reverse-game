@@ -48,7 +48,7 @@ for ((i=1; i<=$ITERATIONS; i++)); do
   ONLY WORK ON A SINGLE TASK.
   6. If needed, update the tests to cover the new functionality.
   7. On completion of the task, close the GitHub issue.
-  8. If all open issues are complete, output <promise>COMPLETE</promise>
+  8. If all open issues are complete, output <promise>COMPLETE</promise> (do not write that string otherwise)
   "
 
   # Call Claude with live output
