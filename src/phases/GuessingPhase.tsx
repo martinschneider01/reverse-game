@@ -4,6 +4,7 @@ import { NotesEditor } from "@/components/NotesEditor";
 import type { Recorder, RecorderOptions } from "@/audio/wrappers/recorder";
 import type { Player } from "@/audio/wrappers/player";
 import { useGameStore } from "@/store/gameStore";
+import { useGuessingTimer, formatRemaining } from "./useGuessingTimer";
 
 const MAX_DURATION_MS = 15000;
 
@@ -38,6 +39,8 @@ export function GuessingPhase({
   const counterText =
     listenLimit !== null ? `Écoutes : ${listenCount} / ${listenLimit}` : `Écoutes : ${listenCount}`;
 
+  const { remainingMs } = useGuessingTimer();
+
   if (originalRecording === null) {
     return (
       <section>
@@ -52,6 +55,12 @@ export function GuessingPhase({
     <section>
       <p className="kicker">Joueur 2</p>
       <h2>Devine la phrase</h2>
+
+      {remainingMs !== null && (
+        <p aria-label="Temps restant" aria-live="polite" className="counter-chip timer-chip">
+          Temps : {formatRemaining(remainingMs)}
+        </p>
+      )}
 
       <div className="card">
         <h3>Enregistrement original (à l'envers)</h3>

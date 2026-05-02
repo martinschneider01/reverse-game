@@ -117,6 +117,25 @@ describe("startGameStorePersistence", () => {
     stop();
   });
 
+  it("includes guessingStartedAt in the snapshot when set", async () => {
+    const save = vi.fn(async (_state: PersistedState) => {});
+    const stop = startGameStorePersistence({ debounceMs: 5, save, clear: vi.fn() });
+
+    useGameStore.setState({
+      phase: "guessing",
+      originalRecording: fakeRecording,
+      challengeRules: { timerMs: 60_000, notesEnabled: true, listenLimit: null },
+      guessingStartedAt: 1700000000000,
+    });
+    vi.advanceTimersByTime(5);
+    await Promise.resolve();
+
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save.mock.calls[0]?.[0]?.guessingStartedAt).toBe(1700000000000);
+
+    stop();
+  });
+
   it("includes guessRecording in the snapshot once set", async () => {
     const save = vi.fn(async (_state: PersistedState) => {});
     const stop = startGameStorePersistence({ debounceMs: 5, save, clear: vi.fn() });

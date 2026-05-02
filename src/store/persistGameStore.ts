@@ -31,6 +31,7 @@ function snapshot(s: GameState): PersistedState | null {
     notes: s.notes,
     listenCount: s.listenCount,
     challengeRules: s.challengeRules,
+    guessingStartedAt: s.guessingStartedAt,
   };
 }
 

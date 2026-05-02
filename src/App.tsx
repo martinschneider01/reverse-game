@@ -58,13 +58,23 @@ export function App() {
             ? await rehydrateRecording(persisted.guessRecording, ctx)
             : null;
         if (cancelled) return;
+        // Timer expiry on hydration: if a Mode Challenge timer ran out while
+        // the PWA was unloaded, jump straight to reveal (cf. §3.12).
+        const timerMs = persisted.challengeRules?.timerMs ?? null;
+        const startedAt = persisted.guessingStartedAt;
+        const expired =
+          timerMs !== null &&
+          startedAt !== null &&
+          (persisted.phase === "guessing" || persisted.phase === "confirmEnd") &&
+          Date.now() - startedAt >= timerMs;
         useGameStore.setState({
-          phase: persisted.phase,
+          phase: expired ? "reveal" : persisted.phase,
           originalRecording: original,
           guessRecording: guess,
           notes: persisted.notes,
           listenCount: persisted.listenCount,
           challengeRules: persisted.challengeRules,
+          guessingStartedAt: expired ? null : persisted.guessingStartedAt,
         });
       } catch {
         // Hydration failed (corrupt blob, decode error). Fall back to menu.

@@ -2539,3 +2539,116 @@ Notes for next agent
      Consider a small useGuessingTimer() hook scoped to
      GuessingPhase rather than inlining setTimeout/clearTimeout
      dance directly in the component.
+
+---
+
+2026-05-02 — Issue #28 (Mode Challenge — règle : timer pour le devineur)
+
+Closes the third v0.2 rule slice. The timer rule is now applied
+during the guessing phase: when challengeRules.timerMs is non-null,
+a wall-clock countdown ticks every 250 ms, displays as "Temps : m:ss"
+above the original-recording card, and forces a transition to reveal
+when it hits zero (skipping confirmEnd, per §3.12 line 211). The
+countdown survives a lock-screen / PWA unload via guessingStartedAt
+(epoch ms) which is persisted alongside the rest of the round; on
+rehydration, if (Date.now() - guessingStartedAt) >= timerMs, App
+jumps straight to reveal.
+
+Persistence schema decision
+   - Followed the pattern set by #29/#30 (challengeRules): added
+     guessingStartedAt as an OPTIONAL field at the read site
+     (guessingStartedAt?: ... in RawState; raw.guessingStartedAt
+     ?? null on load). No version bump. A pre-timer save just loads
+     with guessingStartedAt: null, and Mode 1 saves never set it
+     anyway (timerMs gates the assignment).
+   - Documented compatibility with two new persistence tests:
+     "round-trips guessingStartedAt" + "loads guessingStartedAt as
+     null when absent from a pre-timer save".
+
+Store changes (src/store/gameStore.ts)
+   - GameState: + guessingStartedAt: number | null
+   - INITIAL_STATE: + guessingStartedAt: null
+   - finishRecordingA: writes guessingStartedAt = Date.now() iff
+     challengeRules?.timerMs != null. Mode 1 leaves it null.
+   - confirmEnd / newRound: clear guessingStartedAt (null).
+   - NEW action forceReveal(): guessing | confirmEnd → reveal,
+     clears guessingStartedAt. Used by the timer hook.
+   - cancelEnd does NOT touch guessingStartedAt — wall-clock keeps
+     ticking through confirmEnd ↔ guessing toggles, per §3.12 line
+     212 ("timer ne pause pas pendant les ré-écoutes").
+
+Hook (src/phases/useGuessingTimer.ts — new file)
+   - Reads challengeRules.timerMs, guessingStartedAt, phase from
+     the store; injectable now() for deterministic tests.
+   - setInterval(250 ms) tick recomputes remaining = timerMs -
+     (now - startedAt). On <= 0, dispatches forceReveal() and lets
+     the cleanup tear down the interval.
+   - Active iff timerMs !== null && startedAt !== null && phase ∈
+     {guessing, confirmEnd}. Returns { remainingMs: number | null }.
+   - formatRemaining(ms) → "m:ss" with ceil-on-seconds rounding.
+
+GuessingPhase (src/phases/GuessingPhase.tsx)
+   - Calls useGuessingTimer() at top-level (above the originalRecording
+     null guard, so hook order stays stable).
+   - Renders <p aria-label="Temps restant" aria-live="polite"> only
+     when remainingMs !== null. Sits between the h2 and the original
+     player card.
+
+App.tsx hydration
+   - Computes `expired = timerMs !== null && startedAt !== null &&
+     phase ∈ {guessing, confirmEnd} && Date.now() - startedAt >= timerMs`
+     before setState. If expired: jump straight to "reveal" with
+     guessingStartedAt cleared. Otherwise restore as-is.
+
+Tests added (23 new, total 218 → 241)
+   - gameStore.test.ts: +4 finishRecordingA cases (timer / no rules /
+     timer null) + 3 forceReveal cases (guessing / confirmEnd / no-op).
+   - persistence.test.ts: +2 cases (round-trip + back-compat).
+   - persistGameStore.test.ts: +1 case (snapshot includes
+     guessingStartedAt).
+   - useGuessingTimer.test.tsx (NEW): 7 hook cases covering null
+     rules, timerMs null, active read, expiry-fires-forceReveal,
+     immediate-expiry-on-mount, ticking-during-confirmEnd, and
+     stops-on-reveal. Plus 3 formatRemaining cases.
+   - GuessingPhase.test.tsx: +4 RTL cases (chip absent in Mode 1
+     and timerMs null, mm:ss displayed when active, transitions to
+     reveal when expired on mount).
+
+What is intentionally NOT done
+   - No timer-pause-on-listen logic. §3.12 line 212 explicitly
+     defers it to a HITL feedback iteration. Wall-clock is the
+     decided behavior.
+   - No "temps écoulé" intermediate phase. §3.12 line 211 forces
+     guessing → reveal directly.
+   - No styling/animation for the timer chip. CSS reuses the
+     .counter-chip class with a .timer-chip modifier for future
+     theming.
+   - No confirmation modal when forceReveal fires from confirmEnd
+     (the dialog just unmounts as the phase changes — RTL test
+     confirms the transition).
+
+Verification
+   - bun run typecheck → clean
+   - bun run lint → 0 warnings, 0 errors (95 rules, 52 files)
+   - bun run format:check → clean (53 files)
+   - bun run test → 241/241 passing across 24 test files
+     (was 218/23 — added 23 tests + 1 new test file
+     useGuessingTimer.test.tsx)
+
+Notes for next agent
+   - v0.2 (Mode Challenge) is now feature-complete: #26 (config
+     screen + state machine) ✓ #28 (timer) ✓ #29 (notes off) ✓
+     #30 (re-listen limit) ✓. Worth marking the milestone closed
+     in the next commit if the project tracks it.
+   - One unblocked v0.3 issue left: #25 (HITL Ouzbek design).
+     It's design-only / no code, and unblocks #27 (Ouzbek tracer
+     bullet) which then unblocks #31 (reveal) and partially #32
+     (Ouzbek Challenge). #25 needs human input on the "P3 sans
+     reverse" enforcement strategy and on whether Ouzbek replaces
+     or augments the existing roadmap. An autonomous agent can
+     draft proposals against PROJECT.md but cannot ratify them.
+   - Pattern for hooks-with-side-effects is now established
+     (useGuessingTimer). If a future Ouzbek slice needs similar
+     wall-clock work (e.g. timer per phase), reuse the shape:
+     selector → derived "active" bool → effect with cleanup, plus
+     an injectable now() for tests.

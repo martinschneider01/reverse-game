@@ -263,6 +263,64 @@ describe("<GuessingPhase />", () => {
     expect(screen.getByLabelText(/compteur d'écoutes/i)).toHaveTextContent("Écoutes : 1 / 1");
   });
 
+  it("does not render a timer chip in Mode 1 (no challengeRules)", () => {
+    render(
+      <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    expect(screen.queryByLabelText(/temps restant/i)).not.toBeInTheDocument();
+  });
+
+  it("does not render a timer chip when challengeRules.timerMs is null", () => {
+    useGameStore.setState({
+      ...INITIAL_STATE,
+      phase: "guessing",
+      originalRecording: fakeOriginal,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, timerMs: null },
+    });
+    render(
+      <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    expect(screen.queryByLabelText(/temps restant/i)).not.toBeInTheDocument();
+  });
+
+  it("renders a timer chip with the remaining mm:ss when the rule is active", () => {
+    useGameStore.setState({
+      ...INITIAL_STATE,
+      phase: "guessing",
+      originalRecording: fakeOriginal,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, timerMs: 60_000 },
+      guessingStartedAt: Date.now() - 5_000,
+    });
+    render(
+      <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    const chip = screen.getByLabelText(/temps restant/i);
+    expect(chip).toHaveTextContent(/Temps : 0:5[0-9]/);
+  });
+
+  it("transitions to reveal when the timer hits zero", async () => {
+    vi.useFakeTimers();
+    try {
+      useGameStore.setState({
+        ...INITIAL_STATE,
+        phase: "guessing",
+        originalRecording: fakeOriginal,
+        challengeRules: { ...DEFAULT_CHALLENGE_RULES, timerMs: 1_000 },
+        guessingStartedAt: Date.now() - 2_000,
+      });
+      render(
+        <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+      );
+      // Already expired on mount → forceReveal fires synchronously inside the
+      // first effect tick.
+      await vi.waitFor(() => {
+        expect(useGameStore.getState().phase).toBe("reveal");
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("the 'Ta voix' replay player does not expose the gear (and slider) while the original does", async () => {
     const user = userEvent.setup();
     useGameStore.setState({

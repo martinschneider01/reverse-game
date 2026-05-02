@@ -34,6 +34,10 @@ export type GameState = {
   notes: string;
   listenCount: number;
   challengeRules: ChallengeRules | null;
+  /** Wall-clock epoch ms when the guessing phase was entered. Set only when a
+   *  timer rule is active (cf. §3.12). Used to compute remaining time on each
+   *  render and to resume the countdown after a lock-screen/PWA unload. */
+  guessingStartedAt: number | null;
 
   startGame: () => void;
   startChallenge: () => void;
@@ -48,6 +52,8 @@ export type GameState = {
   endGuessing: () => void;
   cancelEnd: () => void;
   confirmEnd: () => void;
+  /** Forced transition guessing|confirmEnd → reveal triggered by timer expiry. */
+  forceReveal: () => void;
   newRound: () => void;
   backToMenu: () => void;
 };
@@ -66,6 +72,7 @@ type ActionKey =
   | "endGuessing"
   | "cancelEnd"
   | "confirmEnd"
+  | "forceReveal"
   | "newRound"
   | "backToMenu";
 
@@ -78,6 +85,7 @@ export const INITIAL_STATE: Slice = {
   notes: "",
   listenCount: 0,
   challengeRules: null,
+  guessingStartedAt: null,
 };
 
 export const useGameStore = create<GameState>((set) => ({
@@ -101,9 +109,15 @@ export const useGameStore = create<GameState>((set) => ({
     set((s) => (s.phase === "permissionDenied" ? { phase: "permission" } : {})),
 
   finishRecordingA: (recording) =>
-    set((s) =>
-      s.phase === "recordingA" ? { phase: "guessing", originalRecording: recording } : {},
-    ),
+    set((s) => {
+      if (s.phase !== "recordingA") return {};
+      const startedAt = s.challengeRules?.timerMs != null ? Date.now() : null;
+      return {
+        phase: "guessing",
+        originalRecording: recording,
+        guessingStartedAt: startedAt,
+      };
+    }),
 
   setNotes: (notes) => set((s) => (s.phase === "guessing" ? { notes } : {})),
 
@@ -116,7 +130,15 @@ export const useGameStore = create<GameState>((set) => ({
 
   cancelEnd: () => set((s) => (s.phase === "confirmEnd" ? { phase: "guessing" } : {})),
 
-  confirmEnd: () => set((s) => (s.phase === "confirmEnd" ? { phase: "reveal" } : {})),
+  confirmEnd: () =>
+    set((s) => (s.phase === "confirmEnd" ? { phase: "reveal", guessingStartedAt: null } : {})),
+
+  forceReveal: () =>
+    set((s) =>
+      s.phase === "guessing" || s.phase === "confirmEnd"
+        ? { phase: "reveal", guessingStartedAt: null }
+        : {},
+    ),
 
   newRound: () =>
     set((s) =>
@@ -127,6 +149,7 @@ export const useGameStore = create<GameState>((set) => ({
             guessRecording: null,
             notes: "",
             listenCount: 0,
+            guessingStartedAt: null,
           }
         : {},
     ),

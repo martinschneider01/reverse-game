@@ -17,6 +17,7 @@ function makeState(overrides: Partial<PersistedState> = {}): PersistedState {
     notes: "",
     listenCount: 0,
     challengeRules: null,
+    guessingStartedAt: null,
     ...overrides,
   };
 }
@@ -80,6 +81,61 @@ describe("persistence", () => {
       notesEnabled: false,
       listenLimit: 3,
     });
+  });
+
+  it("round-trips guessingStartedAt so the timer resumes after a lock-screen", async () => {
+    const startedAt = 1700000000000;
+    await savePersistedState(
+      makeState({
+        challengeRules: { timerMs: 60_000, notesEnabled: true, listenLimit: null },
+        guessingStartedAt: startedAt,
+      }),
+    );
+    const loaded = await loadPersistedState();
+    expect(loaded?.guessingStartedAt).toBe(startedAt);
+  });
+
+  it("loads guessingStartedAt as null when absent from a pre-timer save", async () => {
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.open("reverso", 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains("state")) db.createObjectStore("state");
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction("state", "readwrite");
+        tx.objectStore("state").put(
+          {
+            version: 1,
+            phase: "guessing",
+            originalRecording: {
+              data: new ArrayBuffer(0),
+              mimeType: "audio/webm",
+              durationMs: 100,
+            },
+            guessRecording: null,
+            notes: "",
+            listenCount: 0,
+            challengeRules: null,
+            // no guessingStartedAt key
+          },
+          "current",
+        );
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => {
+          db.close();
+          reject(tx.error ?? new Error("seed failed"));
+        };
+      };
+      req.onerror = () => reject(req.error ?? new Error("open failed"));
+    });
+
+    const loaded = await loadPersistedState();
+    expect(loaded?.guessingStartedAt).toBeNull();
   });
 
   it("loads challengeRules as null when absent from a pre-Mode-Challenge save", async () => {

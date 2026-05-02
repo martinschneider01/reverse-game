@@ -148,6 +148,63 @@ describe("gameStore", () => {
       expect(s.phase).toBe("menu");
       expect(s.originalRecording).toBeNull();
     });
+
+    it("sets guessingStartedAt to now when challengeRules carries a timer", () => {
+      const t0 = Date.now();
+      useGameStore.setState({
+        phase: "recordingA",
+        challengeRules: { timerMs: 60_000, notesEnabled: true, listenLimit: null },
+      });
+      useGameStore.getState().finishRecordingA(fakeRecording);
+      const s = useGameStore.getState();
+      expect(s.guessingStartedAt).not.toBeNull();
+      expect(s.guessingStartedAt!).toBeGreaterThanOrEqual(t0);
+    });
+
+    it("leaves guessingStartedAt null when there are no rules (Mode 1)", () => {
+      useGameStore.setState({ phase: "recordingA", challengeRules: null });
+      useGameStore.getState().finishRecordingA(fakeRecording);
+      expect(useGameStore.getState().guessingStartedAt).toBeNull();
+    });
+
+    it("leaves guessingStartedAt null when challengeRules.timerMs is null", () => {
+      useGameStore.setState({
+        phase: "recordingA",
+        challengeRules: { timerMs: null, notesEnabled: true, listenLimit: 3 },
+      });
+      useGameStore.getState().finishRecordingA(fakeRecording);
+      expect(useGameStore.getState().guessingStartedAt).toBeNull();
+    });
+  });
+
+  describe("forceReveal", () => {
+    it("transitions guessing → reveal and clears guessingStartedAt", () => {
+      useGameStore.setState({
+        phase: "guessing",
+        originalRecording: fakeRecording,
+        guessingStartedAt: 1234,
+      });
+      useGameStore.getState().forceReveal();
+      const s = useGameStore.getState();
+      expect(s.phase).toBe("reveal");
+      expect(s.guessingStartedAt).toBeNull();
+    });
+
+    it("transitions confirmEnd → reveal too (skipping the confirmation modal)", () => {
+      useGameStore.setState({
+        phase: "confirmEnd",
+        originalRecording: fakeRecording,
+        guessingStartedAt: 1234,
+      });
+      useGameStore.getState().forceReveal();
+      expect(useGameStore.getState().phase).toBe("reveal");
+    });
+
+    it("is a no-op outside guessing | confirmEnd", () => {
+      useGameStore.setState({ phase: "menu" });
+      useGameStore.getState().forceReveal();
+      expect(useGameStore.getState().phase).toBe("menu");
+    });
   });
 
   describe("setNotes", () => {
