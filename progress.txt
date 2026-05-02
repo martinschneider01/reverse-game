@@ -3188,3 +3188,65 @@ Notes pour le prochain agent
      activePhases). Si un futur mode introduit une autre
      phase guessing, passer activePhases au lieu d'éditer
      le hook.
+
+
+2026-05-02 — Issue #36 (Mode Ouzbek — note de J2 lisible pendant l'enregistrement P3)
+
+Petit ticket UX ciblé sur RecordingP3Phase. Plainte utilisateur :
+la note de J2 n'était pas suffisamment lisible PENDANT que J3
+enregistre, alors que c'est précisément le moment où il en a besoin
+(il lit à voix haute en suivant le texte).
+
+Changements
+
+src/phases/RecordingP3Phase.tsx
+   - Card "Note de J2" reçoit la classe `ouzbek-note-card` (accent
+     primary autour) → focus visuel principal.
+   - Texte de la note sort en `<p className="ouzbek-note-text">`
+     (font-size 1.375rem, line-height 1.5, white-space pre-wrap
+     pour préserver les retours-ligne du textarea de J2).
+   - Suppression du paragraphe d'intro "Lis la note de J2 à voix
+     haute. J4 écoutera ton enregistrement à l'envers." :
+     redondant avec le H2 "Lis la note et enregistre", et il
+     ajoutait du texte mineur qui poussait la note plus bas en
+     mobile portrait. Aucun test n'asserte cette copie.
+   - Aucune modification de la branche preview/post-capture
+     (pas de régression sur la pré-écoute).
+   - Aucune modification du store / state machine.
+
+src/index.css
+   - Nouvelles classes `.ouzbek-note-card` et `.ouzbek-note-text`
+     dans le layer components.
+
+Tests ajoutés (RecordingP3Phase.test.tsx, +2 tests)
+
+   - "keeps J2's note visible while the recorder is actively
+     capturing" : clique sur Enregistrer, vérifie que le bouton
+     Arrêter apparaît (preuve de l'état recording actif), puis
+     vérifie que `getByLabelText(/note de j2/i)` est toujours
+     présent avec son contenu.
+   - "renders the note with the readable styling class" : vérifie
+     la présence de la classe `ouzbek-note-text` (jsdom ne
+     calcule pas le CSS — on valide que la classe est bien
+     appliquée, le rendu visuel reste à valider en HITL).
+
+Verification (toutes vertes)
+
+   - bun run typecheck → clean
+   - bun run lint → 0 warnings, 0 errors (95 rules, 72 files)
+   - bun run format:check → clean (73 files)
+   - bun run test → 348/348 passing across 33 test files
+     (+2 tests vs. baseline avant cette slice)
+
+Notes pour le prochain agent
+
+   - Trois issues "needs-triage" restent ouvertes : #33 (warning
+     timer challenge), #34 (saisie manuelle des règles challenge),
+     #35 (bouton télécharger). Aucune n'est bloquée.
+   - La classe `.ouzbek-note-card` est spécifique à RecordingP3.
+     Si d'autres phases doivent un jour highlighter une card de
+     façon similaire, renommer en `.card-emphasis` ou équivalent
+     plutôt que dupliquer.
+   - Le rendu visuel exact (choix de la couleur d'accent, taille)
+     est à HITL-valider sur device — jsdom ne valide que la
+     présence des classes, pas leur effet.

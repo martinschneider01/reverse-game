@@ -77,6 +77,22 @@ describe("<RecordingP3Phase />", () => {
     expect(screen.getByText(/aucune note prise/i)).toBeInTheDocument();
   });
 
+  it("keeps J2's note visible while the recorder is actively capturing", async () => {
+    const user = userEvent.setup();
+    renderPhase();
+
+    await user.click(screen.getByRole("button", { name: /enregistrer/i }));
+
+    // Recorder is now in the "recording" state — the Stop button proves it.
+    expect(await screen.findByRole("button", { name: /arrêter/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/note de j2/i)).toHaveTextContent("transcription par J2");
+  });
+
+  it("renders the note with the readable styling class so it can be read at a glance", () => {
+    renderPhase();
+    expect(screen.getByLabelText(/note de j2/i)).toHaveClass("ouzbek-note-text");
+  });
+
   it("preview player locks direction to forward (reverse button disabled per §3.13)", async () => {
     const user = userEvent.setup();
     const player = makeFakePlayer();

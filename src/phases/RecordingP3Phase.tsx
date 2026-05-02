@@ -32,16 +32,17 @@ export function RecordingP3Phase({
       <section>
         <p className="kicker">Joueur 3</p>
         <h2>Lis la note et enregistre</h2>
-        <p>Lis la note de J2 à voix haute. J4 écoutera ton enregistrement à l'envers.</p>
 
-        <div className="card">
+        <div className="card ouzbek-note-card">
           <h3>Note de J2</h3>
           {ouzbekNoteP2 === "" ? (
             <p className="reveal-notes">
               <em>Aucune note prise.</em>
             </p>
           ) : (
-            <p aria-label="Note de J2">{ouzbekNoteP2}</p>
+            <p className="ouzbek-note-text" aria-label="Note de J2">
+              {ouzbekNoteP2}
+            </p>
           )}
         </div>
 

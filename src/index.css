@@ -360,6 +360,19 @@
     color: var(--color-text-muted);
   }
 
+  .ouzbek-note-card {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 1px var(--color-primary);
+  }
+
+  .ouzbek-note-text {
+    font-size: 1.375rem;
+    line-height: 1.5;
+    color: var(--color-text);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
   .menu-screen {
     min-height: 80dvh;
     justify-content: center;
