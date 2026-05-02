@@ -1964,3 +1964,79 @@ Notes for next agent
    - Issue #25/#26/etc. (Mode Téléphone Ouzbek, Mode Challenge) will
      reuse the same <AudioRecorder /> primitive — they automatically
      get the auto-scaling without additional work.
+
+================================================================
+2026-05-02 — issue #22 — rename "Joueur A / Joueur B" → "Joueur 1 / Joueur 2" in UI
+
+Picked #22 because it was the highest-priority unblocked, non-HITL issue
+remaining. Also it pre-emptively cleans up the copy for the upcoming
+multi-player Mode Ouzbek (Joueur 1/2/3/4) so we never have to backfill
+that naming again. #23 (modal confirmation) was the other unblocked
+candidate but is more architecturally significant and benefits from
+being done after this naming pass — we'll write the new <ConfirmDialog />
+copy directly with "Joueur 1/2" terminology.
+
+Scope
+   Strict copy-only change per the issue: phase names, store fields,
+   and persistence schema (handoffA/recordingA/originalRecording/
+   guessRecording, etc.) are all left untouched. This keeps the diff
+   small and avoids any risk of breaking the IndexedDB schema for
+   users with an in-flight round.
+
+Files changed (UI copy)
+   - src/phases/MenuPhase.tsx    — howto list (3 occurrences)
+   - src/phases/RecordingAPhase.tsx
+       * kicker "Joueur A" → "Joueur 1" (×2: pre-record and pré-écoute)
+       * "passer le téléphone à B" → "passer le téléphone au Joueur 2"
+       * button label "Passer à B" → "Passer au Joueur 2"
+   - src/phases/GuessingPhase.tsx — kicker "Joueur B" → "Joueur 2"
+   - src/phases/RevealPhase.tsx  — heading "Voix du joueur B" → "Voix du joueur 2"
+
+Files changed (tests — string assertions only)
+   - src/phases/RecordingAPhase.test.tsx
+       * 3× /passer à b/i → /passer au joueur 2/i
+       * 1× test description "'Passer à B'" → "'Passer au Joueur 2'"
+   - src/phases/RevealPhase.test.tsx
+       * 1× test description "'Voix du joueur B'" → "'Voix du joueur 2'"
+   No structural test changes — the assertions still verify the same
+   semantic behavior, just with the new copy.
+
+Documentation
+   - PROJECT.md §11 (glossaire) updated to record the dual naming:
+     "Joueur 1 (UI) / A (code interne)" with a Why: line explaining
+     that internal phase/store names stay in A/B to limit the diff
+     and protect the IDB schema. Added entries for Joueur 1, Joueur 2,
+     and noted the same split on "Original recording" / "Guess recording".
+   The §3.2 mention of "Joueur A, éloigne-toi pour enregistrer" and
+   §5.1 enum comment "// Joueur A, éloigne-toi" were left untouched —
+   they're describing the internal phase machine, not user-facing
+   strings.
+
+Things NOT changed (deliberately, per issue scope)
+   - Phase enum values: handoffA, recordingA, handoffB, etc.
+   - Store fields: originalRecording, guessRecording, finishRecordingA, etc.
+   - Persistence schema in IndexedDB.
+   - Action names (startGame, finishRecordingA, ...).
+   - File names (RecordingAPhase.tsx, etc.).
+   - Section §3.2 / §5.1 of PROJECT.md (internal machine description).
+
+Verification
+   - bun run typecheck → clean
+   - bun run lint → 0 warnings, 0 errors (95 rules, 48 files)
+   - bun run format:check → clean (49 files)
+   - bun run test → 180/180 passing across 22 test files (unchanged)
+   Note: prefer `bun run test` over `bun test` — the latter dispatches
+   to Bun's native test runner which doesn't understand vitest globals
+   like `vi.stubGlobal` and produces ~84 false failures. This is just
+   a tooling gotcha, not a regression.
+
+Notes for next agent
+   - With the naming consistent, you can now write new UI copy directly
+     with "Joueur 1/2/3/4" without worrying about mixed conventions.
+   - Issue #23 (modal "Êtes-vous sûr?") and #25 (Mode Ouzbek design,
+     HITL) are the next sensible picks. #23 is non-HITL and unlocks
+     #26 (Mode Challenge config) and #32 (Mode Ouzbek Challenge).
+   - The internal/external naming split is now documented in PROJECT.md
+     §11. If a future agent is tempted to rename `originalRecording` →
+     `player1Recording` or similar, they should read that glossary
+     entry first — the Why: explains the persistence schema concern.

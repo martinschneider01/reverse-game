@@ -43,7 +43,7 @@ export function RevealPhase({ audioContextFactory, playerFactory }: RevealPhaseP
 
       {guessRecording !== null && (
         <div className="card">
-          <h3>Voix du joueur B</h3>
+          <h3>Voix du joueur 2</h3>
           <AudioPlayer
             recording={guessRecording}
             audioContext={ctx}

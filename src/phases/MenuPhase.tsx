@@ -22,14 +22,14 @@ export function MenuPhase() {
         <summary>Comment ça marche&nbsp;?</summary>
         <ol>
           <li>
-            <strong>Joueur A</strong> enregistre une phrase de son choix.
+            <strong>Joueur 1</strong> enregistre une phrase de son choix.
           </li>
           <li>
-            L'app <strong>inverse l'audio</strong> et passe le téléphone à <strong>Joueur B</strong>
+            L'app <strong>inverse l'audio</strong> et passe le téléphone à <strong>Joueur 2</strong>
             .
           </li>
           <li>
-            Joueur B écoute la version inversée et tente de <strong>retrouver la phrase</strong>.
+            Joueur 2 écoute la version inversée et tente de <strong>retrouver la phrase</strong>.
           </li>
         </ol>
       </details>

@@ -43,7 +43,7 @@ export function GuessingPhase({
 
   return (
     <section>
-      <p className="kicker">Joueur B</p>
+      <p className="kicker">Joueur 2</p>
       <h2>Devine la phrase</h2>
 
       <div className="card">

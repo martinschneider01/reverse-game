@@ -390,8 +390,10 @@ Si un échoue, le commit est bloqué. **Never bypass with `--no-verify`** — co
 - **Round** — une séquence complète enregistrement → devinage → révélation.
 - **Phase** — état courant de la machine à état (`menu`, `recordingA`, etc.).
 - **Recording** — un couple `{ forward: AudioBuffer, reverse: AudioBuffer }` représentant un enregistrement réversible.
-- **Original recording** — l'enregistrement de A (la phrase à deviner).
-- **Guess recording** — la dernière prise de B (sa proposition vocale).
+- **Joueur 1** (copy UI) / **A** (code interne) — le joueur qui enregistre la phrase originale.
+- **Joueur 2** (copy UI) / **B** (code interne) — le joueur qui devine. Why: la copy utilisateur utilise des numéros (cohérence avec les modes multi-joueurs à venir où on parlera de Joueur 1/2/3/4) ; les noms de phases internes (`handoffA`, `recordingA`, `originalRecording`, `guessRecording`) restent en A/B pour limiter le diff et éviter les régressions sur la persistance IndexedDB.
+- **Original recording** — l'enregistrement du Joueur 1 (la phrase à deviner). Stocké en interne sous `originalRecording`.
+- **Guess recording** — la dernière prise du Joueur 2 (sa proposition vocale). Stocké en interne sous `guessRecording`.
 - **Direction** — `'forward' | 'reverse'` ; sens dans lequel un Recording est joué par un AudioPlayer.
 - **Playback rate** — multiplicateur de vitesse appliqué au player (0.25 à 2.0).
 - **Hand-off** — transition entre joueurs avec écran dédié pour le passage du téléphone.

@@ -29,7 +29,7 @@ export function RecordingAPhase({
   if (preview === null) {
     return (
       <section>
-        <p className="kicker">Joueur A</p>
+        <p className="kicker">Joueur 1</p>
         <h2>Enregistre ton vocal sans que personne ne t'écoute</h2>
         <p>Prononce une phrase courte (15 s max).</p>
         <div className="card">
@@ -48,9 +48,9 @@ export function RecordingAPhase({
 
   return (
     <section>
-      <p className="kicker">Joueur A</p>
+      <p className="kicker">Joueur 1</p>
       <h2>Pré-écoute</h2>
-      <p>Vérifie ta prise avant de passer le téléphone à B.</p>
+      <p>Vérifie ta prise avant de passer le téléphone au Joueur 2.</p>
       <div className="card">
         <AudioPlayer
           recording={preview}
@@ -60,7 +60,7 @@ export function RecordingAPhase({
         />
       </div>
       <button type="button" onClick={() => finishRecordingA(preview)}>
-        Passer à B
+        Passer au Joueur 2
       </button>
     </section>
   );

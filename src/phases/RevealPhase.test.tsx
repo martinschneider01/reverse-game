@@ -58,7 +58,7 @@ describe("<RevealPhase />", () => {
     expect(screen.getByLabelText(/notes/i)).toHaveTextContent("ma note");
   });
 
-  it("primes the 'Voix du joueur B' player in reverse via initialDirection", () => {
+  it("primes the 'Voix du joueur 2' player in reverse via initialDirection", () => {
     const players: Player[] = [];
     render(
       <RevealPhase

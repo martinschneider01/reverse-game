@@ -87,17 +87,17 @@ describe("<RecordingAPhase />", () => {
     expect(screen.getByRole("button", { name: /lecture à l'endroit/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^refaire$/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /fermer/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /passer à b/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /passer au joueur 2/i })).toBeInTheDocument();
     expect(useGameStore.getState().phase).toBe("recordingA");
     expect(useGameStore.getState().originalRecording).toBeNull();
   });
 
-  it("clicking 'Passer à B' transitions to guessing with the recorded buffer", async () => {
+  it("clicking 'Passer au Joueur 2' transitions to guessing with the recorded buffer", async () => {
     const user = userEvent.setup();
     renderPhase();
 
     await recordOnce(user);
-    await user.click(await screen.findByRole("button", { name: /passer à b/i }));
+    await user.click(await screen.findByRole("button", { name: /passer au joueur 2/i }));
 
     const s = useGameStore.getState();
     expect(s.phase).toBe("guessing");
@@ -119,7 +119,7 @@ describe("<RecordingAPhase />", () => {
     await user.click(screen.getByRole("button", { name: /fermer/i }));
 
     expect(await screen.findByRole("button", { name: /enregistrer/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /passer à b/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /passer au joueur 2/i })).not.toBeInTheDocument();
     expect(useGameStore.getState().phase).toBe("recordingA");
     expect(useGameStore.getState().originalRecording).toBeNull();
   });
