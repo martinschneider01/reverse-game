@@ -3481,3 +3481,172 @@ Notes pour le prochain agent
    - Pas de support des décimales (1.5 s) — la spec demande
      entiers et c'est cohérent avec listenLimit. Si demande HITL,
      élargir à `parseFloat` + un `Math.round(seconds * 1000)`.
+
+
+────────────────────────────────────────────────────────────────────────────
+2026-05-02 19:15 CEST · Issue #33 — warning visuel + sonore avant fin du
+                        timer Mode Challenge (avec inhibition pendant
+                        playback / capture)
+────────────────────────────────────────────────────────────────────────────
+
+Contexte et choix
+
+   Issue #33 demandait d'ajouter, pendant les 10 dernières secondes du
+   timer Mode Challenge :
+     - un signal visuel (couleur / pulsation du compteur) — toujours actif
+     - un signal sonore (bip), inhibé pendant qu'un AudioPlayer joue ou
+       qu'un AudioRecorder capture (pour ne pas pourrir l'audio utile)
+   Concerne `GuessingPhase` (Mode 1 Challenge), `GuessingP2Phase`,
+   `GuessingP4Phase` (Mode Ouzbek Challenge).
+
+Approche choisie
+
+   - Seuil hardcodé `WARNING_THRESHOLD_MS = 10_000` exporté par le hook
+     (utile pour les tests, single source of truth).
+   - Bip = **intermittent, 1 bip par seconde** entrante dans la fenêtre
+     [1..10] (l'issue laissait le choix : continu / intermittent / unique).
+     Plus discret que continu, plus utile qu'unique pour rappeler que le
+     temps file. Throttling via `lastBeepSecondRef` qui mémorise la dernière
+     seconde "ceil(rem/1000)" pour laquelle on a bipé.
+   - Inhibition : nouveau compteur `capturingCount: number` dans
+     `playbackStore` (refcount, pas un boolean → robuste si plusieurs
+     `<AudioRecorder />` coexistent). `currentPlayingId` déjà existant.
+     `defaultIsAudioInhibited()` = `currentPlayingId !== null ||
+     capturingCount > 0`.
+   - Le visuel `isWarning` est INDÉPENDANT de l'inhibition (cf. acceptance
+     "Le warning visuel reste actif même quand le bip est inhibé"). Les
+     deux sont distincts dans la valeur retournée par le hook.
+   - DI complet pour les tests : `audioContext`, `beep`, `isAudioInhibited`
+     sont injectables. En prod, `beep` = `playTimerBeep` (Web Audio sine
+     880 Hz, 180 ms, enveloppe attack 10 ms / decay), `isAudioInhibited`
+     lit le `playbackStore`.
+   - Le hook reste responsable du déclenchement du bip dans son
+     `setInterval` existant — pas de hook séparé `useTimerBeep`. Why : le
+     timing des bips est exactement aligné avec les ticks de remaining,
+     éviter un second timer dupliqué.
+
+Refactor des phases pour AudioContext stable
+
+   Les trois phases `GuessingPhase`, `GuessingP2Phase`, `GuessingP4Phase`
+   appelaient `audioContextFactory()` au render dans le body du composant
+   (après le early-return). Le hook `useGuessingTimer` doit maintenant
+   recevoir le ctx — donc avant le early-return.
+
+   Choix : un `useRef<AudioContext | null>(null)` lazy-init avant le hook,
+   puis l'early-return en dessous.
+     - En prod, `audioContextFactory` (alias `getAudioContext` dans
+       App.tsx) est déjà un singleton → pas de différence de comportement.
+     - En tests, `() => ({}) as AudioContext` retourne un nouvel objet
+       à chaque appel ; le ref garantit qu'on n'en crée qu'un par phase
+       lifecycle.
+     - Bonus : élimine le mini-bug latent de création d'un nouveau
+       AudioContext-mock à chaque render.
+
+Compteur refcount vs boolean dans playbackStore
+
+   Boolean `isCapturing` aurait suffi pour le cas usuel (1 seul recorder),
+   mais GuessingPhase peut potentiellement remonter le recorder (toggle
+   `guessRecording !== null`) ; un strict mount/unmount pendant la même
+   session reste à 1, donc OK, mais le refcount est défensif et coûte
+   1 LOC de plus. Test "stopCapturing floors at 0" pour garantir qu'un
+   appel non-équilibré ne descend pas en négatif.
+
+CSS
+
+   `.timer-chip-warning` :
+     - background-color → var(--color-danger) (#f43f5e)
+     - color → var(--color-text)
+     - animation `timer-warning-pulse` 1s ease-in-out infinite
+       (transform scale + glow box-shadow)
+   La règle hérite du `.counter-chip` de base ; on ajoute juste la classe
+   en surimpression via template string conditionnelle :
+     `className={`counter-chip timer-chip${isWarning ? " timer-chip-warning" : ""}`}`
+
+Fichiers touchés
+
+   src/store/playbackStore.ts
+     - Ajout `capturingCount: number`, `startCapturing()`, `stopCapturing()`
+       (refcount avec floor à 0).
+   src/components/AudioRecorder.tsx
+     - useEffect lié au `status === "recording"` qui appelle
+       `startCapturing()` / `stopCapturing()` (cleanup automatique au
+       unmount).
+   src/audio/timerBeep.ts (nouveau)
+     - `playTimerBeep(ctx)` — sine 880 Hz, 180 ms, enveloppe pour ne pas
+       cliquer. Garde no-op si `createOscillator`/`createGain` absents
+       (mocks de test passent un objet vide).
+   src/phases/useGuessingTimer.ts
+     - Export `WARNING_THRESHOLD_MS = 10_000`.
+     - Type `GuessingTimerState` ajout `isWarning: boolean`.
+     - Type `GuessingTimerOptions` ajout `audioContext`, `beep`,
+       `isAudioInhibited`.
+     - Logique de seuil + throttling 1 bip/seconde + inhibition.
+   src/phases/GuessingPhase.tsx, GuessingP2Phase.tsx, GuessingP4Phase.tsx
+     - Refactor en `useRef<AudioContext>` lazy-init avant le hook.
+     - `useGuessingTimer({ ..., audioContext: ctx })`.
+     - `className` du chip conditionne `timer-chip-warning`.
+   src/index.css
+     - `.timer-chip-warning` + `@keyframes timer-warning-pulse`.
+
+Tests ajoutés (+19 tests vs baseline 364 → 383 total)
+
+   src/store/playbackStore.test.ts (+3 tests)
+     - "starts with capturingCount at 0"
+     - "startCapturing / stopCapturing refcount"
+     - "stopCapturing floors at 0 (defensive)"
+
+   src/components/AudioRecorder.test.tsx (+1 test)
+     - "flips playbackStore.capturingCount during the recording lifetime"
+
+   src/phases/useGuessingTimer.test.tsx (+11 tests, dans nouveau describe
+   "warning window (issue #33)")
+     - "isWarning false quand remaining > 10s"
+     - "isWarning true quand remaining = 10s exactement"
+     - "isWarning true quand remaining = 5s"
+     - "isWarning false une fois à 0 (force-revealed)"
+     - "isWarning false quand pas de timer"
+     - "fires the beep on entry into the warning window"
+     - "does NOT fire when remaining > 10s"
+     - "fires once per whole-second crossing"
+     - "inhibe le bip pendant playback (visuel reste flagué)"
+     - "inhibe le bip pendant capture (visuel reste flagué)"
+     - "resumes beeping when playback stops mid-warning"
+     - "no beep when audioContext is null (visuel reste calculé)"
+     - "rehydration: remaining < 10s → isWarning true + bip immédiat"
+
+   src/phases/GuessingPhase.test.tsx (+2 tests)
+     - "does NOT add warning class when remaining > 10s"
+     - "adds warning class to timer chip during last 10s"
+
+Verification (toutes vertes)
+
+   - bun run typecheck → clean
+   - bun run lint → 0 warnings, 0 errors (95 rules, 73 files)
+   - bun run format:check → clean (74 files)
+   - bun run test → 383/383 passing across 33 test files
+     (+19 tests vs baseline 364)
+
+Notes pour le prochain agent
+
+   - Toutes les issues "needs-triage" sont closes. À la prochaine demande
+     de feature, créer une issue + faire un slice. Si rien d'autre n'est
+     ouvert, le ralph loop sortira <promise>COMPLETE</promise>.
+   - HITL test recommandé sur device : la pulsation `timer-warning-pulse`
+     (1s ease-in-out) + bip 880Hz peut être un peu agressive en réunion
+     calme. Si retour HITL "trop fort" → réduire `gain.gain` à 0.15
+     (vs 0.25 actuel) ou n'émettre qu'aux 5/3/1 secondes au lieu de
+     chaque seconde.
+   - Le bip ne reset pas au passage de phase à `confirmEnd` car le
+     compteur partagé `lastBeepSecondRef` reste contigu (le timer ne se
+     réinitialise pas pendant la dialog). Si test HITL révèle qu'un bip
+     parasite se redéclenche à l'ouverture/fermeture du dialog (peu
+     probable, le hook tick continue d'avancer en ligne droite), le ref
+     pourra être reset en réponse à un changement de `phase`.
+   - Dépendance circulaire évitée : `useGuessingTimer` lit
+     `playbackStore` mais `playbackStore` ne référence rien hors zustand.
+     Pas d'import depuis `useGuessingTimer.ts` vers les composants.
+   - L'inhibition se base sur `getState()` au tick (pas un subscribe
+     React) — donc si playback démarre/s'arrête entre deux ticks, on
+     verra le changement au prochain tick (≤250ms). Acceptable pour un
+     bip de 180ms : si le bip est en train de jouer quand l'utilisateur
+     démarre playback, il finira son décay ; le suivant sera inhibé.

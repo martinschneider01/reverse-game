@@ -1,8 +1,13 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AudioRecorder } from "./AudioRecorder";
 import type { Recorder, RecorderOptions } from "@/audio/wrappers/recorder";
+import { usePlaybackStore, INITIAL_PLAYBACK_STATE } from "@/store/playbackStore";
+
+beforeEach(() => {
+  usePlaybackStore.setState({ ...INITIAL_PLAYBACK_STATE });
+});
 
 function makeFakeRecorder(blob: Blob): {
   recorder: Recorder;
@@ -66,6 +71,42 @@ describe("<AudioRecorder />", () => {
       blob,
     });
     expect(await screen.findByRole("button", { name: /enregistrer/i })).toBeInTheDocument();
+  });
+
+  it("flips playbackStore.capturingCount during the recording lifetime (for #33 beep inhibition)", async () => {
+    const user = userEvent.setup();
+    const blob = new Blob([new Uint8Array([1])], { type: "audio/webm" });
+    const { recorder } = makeFakeRecorder(blob);
+    const recorderFactory = vi.fn((_opts: RecorderOptions) => recorder);
+
+    const forward = {
+      numberOfChannels: 1,
+      length: 24000,
+      sampleRate: 48000,
+    } as unknown as AudioBuffer;
+    const reversed = forward;
+
+    render(
+      <AudioRecorder
+        maxDurationMs={1000}
+        onRecorded={vi.fn()}
+        recorderFactory={recorderFactory}
+        audioContextFactory={() => ({}) as AudioContext}
+        decode={vi.fn(async () => forward)}
+        reverse={vi.fn(() => reversed)}
+      />,
+    );
+
+    expect(usePlaybackStore.getState().capturingCount).toBe(0);
+
+    await user.click(screen.getByRole("button", { name: /enregistrer/i }));
+    expect(usePlaybackStore.getState().capturingCount).toBe(1);
+
+    await user.click(await screen.findByRole("button", { name: /arrêter/i }));
+    // After stop, we transition through "decoding" → "idle"; either way
+    // capturingCount must be back to 0 (we cleared it the moment we left
+    // "recording").
+    expect(usePlaybackStore.getState().capturingCount).toBe(0);
   });
 
   it("displays an error and a retry button when start() rejects (e.g. permission denied)", async () => {

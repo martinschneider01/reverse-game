@@ -300,6 +300,34 @@ describe("<GuessingPhase />", () => {
     expect(chip).toHaveTextContent(/Temps : 0:5[0-9]/);
   });
 
+  it("does NOT add the warning class when remaining > 10s (#33)", () => {
+    useGameStore.setState({
+      ...INITIAL_STATE,
+      phase: "guessing",
+      originalRecording: fakeOriginal,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, timerMs: 60_000 },
+      guessingStartedAt: Date.now() - 5_000, // 55s remaining
+    });
+    render(
+      <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    expect(screen.getByLabelText(/temps restant/i)).not.toHaveClass("timer-chip-warning");
+  });
+
+  it("adds the warning class to the timer chip during the last 10 seconds (#33)", () => {
+    useGameStore.setState({
+      ...INITIAL_STATE,
+      phase: "guessing",
+      originalRecording: fakeOriginal,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, timerMs: 60_000 },
+      guessingStartedAt: Date.now() - 55_000, // 5s remaining
+    });
+    render(
+      <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    expect(screen.getByLabelText(/temps restant/i)).toHaveClass("timer-chip-warning");
+  });
+
   it("transitions to reveal when the timer hits zero", async () => {
     vi.useFakeTimers();
     try {

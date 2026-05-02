@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { act, render } from "@testing-library/react";
 import { useGameStore, INITIAL_STATE, DEFAULT_CHALLENGE_RULES } from "@/store/gameStore";
+import { usePlaybackStore, INITIAL_PLAYBACK_STATE } from "@/store/playbackStore";
 import { useGuessingTimer, formatRemaining } from "./useGuessingTimer";
 import type { Recording } from "@/audio/recording";
 
@@ -20,6 +21,7 @@ function Probe({ now, onState }: { now: () => number; onState: (ms: number | nul
 
 beforeEach(() => {
   useGameStore.setState({ ...INITIAL_STATE });
+  usePlaybackStore.setState({ ...INITIAL_PLAYBACK_STATE });
   vi.useFakeTimers();
 });
 
@@ -220,6 +222,241 @@ describe("useGuessingTimer — activePhases", () => {
     });
 
     expect(useGameStore.getState().phase).toBe("revealOuzbek");
+  });
+});
+
+describe("useGuessingTimer — warning window (issue #33)", () => {
+  const fakeCtx = {} as AudioContext;
+
+  function WarningProbe({
+    now,
+    onState,
+    beep,
+    audioContext = fakeCtx,
+    isAudioInhibited,
+  }: {
+    now: () => number;
+    onState: (s: { remainingMs: number | null; isWarning: boolean }) => void;
+    beep?: (ctx: AudioContext) => void;
+    audioContext?: AudioContext | null;
+    isAudioInhibited?: () => boolean;
+  }) {
+    const state = useGuessingTimer({ now, beep, audioContext, isAudioInhibited });
+    onState(state);
+    return null;
+  }
+
+  it("isWarning is false when remaining > 10s", () => {
+    useGameStore.setState({
+      phase: "guessing",
+      originalRecording: fakeRecording,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, timerMs: 60_000 },
+      guessingStartedAt: 0,
+    });
+    let last: { remainingMs: number | null; isWarning: boolean } | undefined;
+    render(<WarningProbe now={() => 49_999} onState={(s) => (last = s)} />);
+    expect(last?.remainingMs).toBe(10_001);
+    expect(last?.isWarning).toBe(false);
+  });
+
+  it("isWarning is true when remaining is exactly 10s", () => {
+    useGameStore.setState({
+      phase: "guessing",
+      originalRecording: fakeRecording,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, timerMs: 60_000 },
+      guessingStartedAt: 0,
+    });
+    let last: { remainingMs: number | null; isWarning: boolean } | undefined;
+    render(<WarningProbe now={() => 50_000} onState={(s) => (last = s)} />);
+    expect(last?.remainingMs).toBe(10_000);
+    expect(last?.isWarning).toBe(true);
+  });
+
+  it("isWarning is true when remaining is well inside the window (5s left)", () => {
+    useGameStore.setState({
+      phase: "guessing",
+      originalRecording: fakeRecording,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, timerMs: 60_000 },
+      guessingStartedAt: 0,
+    });
+    let last: { remainingMs: number | null; isWarning: boolean } | undefined;
+    render(<WarningProbe now={() => 55_000} onState={(s) => (last = s)} />);
+    expect(last?.isWarning).toBe(true);
+  });
+
+  it("isWarning flips back to false once the timer reaches zero (force-revealed)", () => {
+    useGameStore.setState({
+      phase: "guessing",
+      originalRecording: fakeRecording,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, timerMs: 60_000 },
+      guessingStartedAt: 0,
+    });
+    let last: { remainingMs: number | null; isWarning: boolean } | undefined;
+    render(<WarningProbe now={() => 60_000} onState={(s) => (last = s)} />);
+    expect(last?.isWarning).toBe(false);
+  });
+
+  it("isWarning is false when no timer rule is active", () => {
+    let last: { remainingMs: number | null; isWarning: boolean } | undefined;
+    render(<WarningProbe now={() => 0} onState={(s) => (last = s)} />);
+    expect(last?.remainingMs).toBeNull();
+    expect(last?.isWarning).toBe(false);
+  });
+
+  it("fires the beep on entry into the warning window", () => {
+    useGameStore.setState({
+      phase: "guessing",
+      originalRecording: fakeRecording,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, timerMs: 60_000 },
+      guessingStartedAt: 0,
+    });
+    const beep = vi.fn();
+    render(<WarningProbe now={() => 55_000} onState={() => {}} beep={beep} />);
+    expect(beep).toHaveBeenCalledTimes(1);
+    expect(beep).toHaveBeenCalledWith(fakeCtx);
+  });
+
+  it("does NOT fire the beep when remaining > 10s", () => {
+    useGameStore.setState({
+      phase: "guessing",
+      originalRecording: fakeRecording,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, timerMs: 60_000 },
+      guessingStartedAt: 0,
+    });
+    const beep = vi.fn();
+    render(<WarningProbe now={() => 30_000} onState={() => {}} beep={beep} />);
+    expect(beep).not.toHaveBeenCalled();
+  });
+
+  it("fires once per whole-second crossing inside the warning window", () => {
+    useGameStore.setState({
+      phase: "guessing",
+      originalRecording: fakeRecording,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, timerMs: 60_000 },
+      guessingStartedAt: 0,
+    });
+    let nowMs = 55_000; // 5s remaining → second 5
+    const beep = vi.fn();
+    render(<WarningProbe now={() => nowMs} onState={() => {}} beep={beep} />);
+    expect(beep).toHaveBeenCalledTimes(1); // initial mount, second 5
+
+    // Advance two ticks (500ms wall) — still in second 5 because ceil(4500/1000)=5
+    act(() => {
+      nowMs = 55_500;
+      vi.advanceTimersByTime(500);
+    });
+    expect(beep).toHaveBeenCalledTimes(1);
+
+    // Cross into second 4 (3500ms remaining → ceil = 4)
+    act(() => {
+      nowMs = 56_500;
+      vi.advanceTimersByTime(1000);
+    });
+    expect(beep).toHaveBeenCalledTimes(2);
+
+    // Cross into second 3 (2500ms remaining → ceil = 3)
+    act(() => {
+      nowMs = 57_500;
+      vi.advanceTimersByTime(1000);
+    });
+    expect(beep).toHaveBeenCalledTimes(3);
+  });
+
+  it("inhibits the beep while audio playback is active (visual still flagged)", () => {
+    useGameStore.setState({
+      phase: "guessing",
+      originalRecording: fakeRecording,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, timerMs: 60_000 },
+      guessingStartedAt: 0,
+    });
+    usePlaybackStore.setState({ currentPlayingId: "some-player-id", capturingCount: 0 });
+    const beep = vi.fn();
+    let last: { remainingMs: number | null; isWarning: boolean } | undefined;
+    render(<WarningProbe now={() => 55_000} onState={(s) => (last = s)} beep={beep} />);
+    expect(beep).not.toHaveBeenCalled();
+    expect(last?.isWarning).toBe(true);
+  });
+
+  it("inhibits the beep while audio capture is active (visual still flagged)", () => {
+    useGameStore.setState({
+      phase: "guessing",
+      originalRecording: fakeRecording,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, timerMs: 60_000 },
+      guessingStartedAt: 0,
+    });
+    usePlaybackStore.setState({ currentPlayingId: null, capturingCount: 1 });
+    const beep = vi.fn();
+    let last: { remainingMs: number | null; isWarning: boolean } | undefined;
+    render(<WarningProbe now={() => 55_000} onState={(s) => (last = s)} beep={beep} />);
+    expect(beep).not.toHaveBeenCalled();
+    expect(last?.isWarning).toBe(true);
+  });
+
+  it("resumes beeping when playback stops mid-warning", () => {
+    useGameStore.setState({
+      phase: "guessing",
+      originalRecording: fakeRecording,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, timerMs: 60_000 },
+      guessingStartedAt: 0,
+    });
+    let inhibited = true;
+    const beep = vi.fn();
+    let nowMs = 55_000;
+    render(
+      <WarningProbe
+        now={() => nowMs}
+        onState={() => {}}
+        beep={beep}
+        isAudioInhibited={() => inhibited}
+      />,
+    );
+    expect(beep).not.toHaveBeenCalled();
+
+    inhibited = false;
+    act(() => {
+      nowMs = 56_000; // crosses into second 4
+      vi.advanceTimersByTime(1000);
+    });
+    expect(beep).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fire the beep when audioContext is null (still computes isWarning)", () => {
+    useGameStore.setState({
+      phase: "guessing",
+      originalRecording: fakeRecording,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, timerMs: 60_000 },
+      guessingStartedAt: 0,
+    });
+    const beep = vi.fn();
+    let last: { remainingMs: number | null; isWarning: boolean } | undefined;
+    render(
+      <WarningProbe
+        now={() => 55_000}
+        onState={(s) => (last = s)}
+        beep={beep}
+        audioContext={null}
+      />,
+    );
+    expect(beep).not.toHaveBeenCalled();
+    expect(last?.isWarning).toBe(true);
+  });
+
+  it("on rehydration with remaining < 10s, isWarning is true and beep fires once", () => {
+    // Simulates: page reload where guessingStartedAt was persisted and the
+    // remaining time is already inside the 10s window.
+    useGameStore.setState({
+      phase: "guessing",
+      originalRecording: fakeRecording,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, timerMs: 60_000 },
+      guessingStartedAt: 0,
+    });
+    const beep = vi.fn();
+    let last: { remainingMs: number | null; isWarning: boolean } | undefined;
+    render(<WarningProbe now={() => 56_500} onState={(s) => (last = s)} beep={beep} />);
+    // remaining = 3500ms, isWarning true on first render
+    expect(last?.isWarning).toBe(true);
+    expect(last?.remainingMs).toBe(3500);
+    expect(beep).toHaveBeenCalledTimes(1);
   });
 });
 

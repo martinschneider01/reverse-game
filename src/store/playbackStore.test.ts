@@ -34,4 +34,25 @@ describe("playbackStore", () => {
     usePlaybackStore.getState().clearPlaying("b");
     expect(usePlaybackStore.getState().currentPlayingId).toBe("a");
   });
+
+  it("starts with capturingCount at 0", () => {
+    expect(usePlaybackStore.getState().capturingCount).toBe(0);
+  });
+
+  it("startCapturing increments and stopCapturing decrements (refcounted)", () => {
+    const { startCapturing, stopCapturing } = usePlaybackStore.getState();
+    startCapturing();
+    expect(usePlaybackStore.getState().capturingCount).toBe(1);
+    startCapturing();
+    expect(usePlaybackStore.getState().capturingCount).toBe(2);
+    stopCapturing();
+    expect(usePlaybackStore.getState().capturingCount).toBe(1);
+    stopCapturing();
+    expect(usePlaybackStore.getState().capturingCount).toBe(0);
+  });
+
+  it("stopCapturing floors at 0 (defensive — guards against unbalanced calls)", () => {
+    usePlaybackStore.getState().stopCapturing();
+    expect(usePlaybackStore.getState().capturingCount).toBe(0);
+  });
 });

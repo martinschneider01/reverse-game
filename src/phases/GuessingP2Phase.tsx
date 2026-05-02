@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { AudioPlayer } from "@/components/AudioPlayer";
 import { NotesEditor } from "@/components/NotesEditor";
 import type { Player } from "@/audio/wrappers/player";
@@ -26,7 +27,16 @@ export function GuessingP2Phase({ audioContextFactory, playerFactory }: Guessing
   const counterText =
     listenLimit !== null ? `Écoutes : ${listenCount} / ${listenLimit}` : `Écoutes : ${listenCount}`;
 
-  const { remainingMs } = useGuessingTimer({ activePhases: TIMER_ACTIVE_PHASES });
+  const ctxRef = useRef<AudioContext | null>(null);
+  if (ctxRef.current === null) {
+    ctxRef.current = audioContextFactory();
+  }
+  const ctx = ctxRef.current;
+
+  const { remainingMs, isWarning } = useGuessingTimer({
+    activePhases: TIMER_ACTIVE_PHASES,
+    audioContext: ctx,
+  });
 
   if (ouzbekRecordingP1 === null) {
     return (
@@ -35,8 +45,6 @@ export function GuessingP2Phase({ audioContextFactory, playerFactory }: Guessing
       </section>
     );
   }
-
-  const ctx = audioContextFactory();
 
   return (
     <section>
@@ -48,7 +56,11 @@ export function GuessingP2Phase({ audioContextFactory, playerFactory }: Guessing
       </p>
 
       {remainingMs !== null && (
-        <p aria-label="Temps restant" aria-live="polite" className="counter-chip timer-chip">
+        <p
+          aria-label="Temps restant"
+          aria-live="polite"
+          className={`counter-chip timer-chip${isWarning ? " timer-chip-warning" : ""}`}
+        >
           Temps : {formatRemaining(remainingMs)}
         </p>
       )}

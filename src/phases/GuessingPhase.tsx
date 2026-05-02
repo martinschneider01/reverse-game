@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { AudioPlayer } from "@/components/AudioPlayer";
 import { AudioRecorder } from "@/components/AudioRecorder";
 import { NotesEditor } from "@/components/NotesEditor";
@@ -39,7 +40,17 @@ export function GuessingPhase({
   const counterText =
     listenLimit !== null ? `Écoutes : ${listenCount} / ${listenLimit}` : `Écoutes : ${listenCount}`;
 
-  const { remainingMs } = useGuessingTimer();
+  // Stable AudioContext for the lifetime of the component, also used by the
+  // timer-warning beep. The factory is a singleton in production but tests
+  // pass plain `() => ({}) as AudioContext`, so memoising via ref keeps both
+  // worlds consistent.
+  const ctxRef = useRef<AudioContext | null>(null);
+  if (ctxRef.current === null) {
+    ctxRef.current = audioContextFactory();
+  }
+  const ctx = ctxRef.current;
+
+  const { remainingMs, isWarning } = useGuessingTimer({ audioContext: ctx });
 
   if (originalRecording === null) {
     return (
@@ -49,15 +60,17 @@ export function GuessingPhase({
     );
   }
 
-  const ctx = audioContextFactory();
-
   return (
     <section>
       <p className="kicker">Joueur 2</p>
       <h2>Devine la phrase</h2>
 
       {remainingMs !== null && (
-        <p aria-label="Temps restant" aria-live="polite" className="counter-chip timer-chip">
+        <p
+          aria-label="Temps restant"
+          aria-live="polite"
+          className={`counter-chip timer-chip${isWarning ? " timer-chip-warning" : ""}`}
+        >
           Temps : {formatRemaining(remainingMs)}
         </p>
       )}

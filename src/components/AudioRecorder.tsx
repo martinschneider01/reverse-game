@@ -9,6 +9,7 @@ import {
   rmsToBarHeight,
 } from "@/audio/waveformScale";
 import type { Recording } from "@/audio/recording";
+import { usePlaybackStore } from "@/store/playbackStore";
 
 export type AudioRecorderProps = {
   maxDurationMs: number;
@@ -42,6 +43,18 @@ export function AudioRecorder({
 
   const audioContextFactoryRef = useRef(audioContextFactory);
   audioContextFactoryRef.current = audioContextFactory;
+
+  // Signal to the timer-warning beep that audio capture is active so it can
+  // inhibit itself (the user is recording — a beep would bleed in). We refcount
+  // start/stop so a remount during capture cannot leak the flag (cf. #33).
+  useEffect(() => {
+    if (status !== "recording") return;
+    const { startCapturing, stopCapturing } = usePlaybackStore.getState();
+    startCapturing();
+    return () => {
+      stopCapturing();
+    };
+  }, [status]);
 
   useEffect(() => {
     if (status !== "recording") return;
