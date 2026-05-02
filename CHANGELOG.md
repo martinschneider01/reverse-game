@@ -2,6 +2,30 @@
 
 Décisions structurelles modifiées par rapport à la version initiale de `PROJECT.md`. Une entrée par décision révisée, datée, justifiée. Format libre (pas de Keep-a-Changelog).
 
+## 2026-05-02 — Mode Challenge — schéma de règles, phase de config, fusion de l'ancien Mode 3
+
+**Quoi** : design slice (#24) pour le futur Mode Challenge — variante de Mode 1 avec règles configurables (timer, notes activées, limite ré-écoutes). Aucun code produit ; cette entrée trace les décisions documentées en §3.12 de `PROJECT.md`.
+
+**Décisions PROJECT.md affectées** :
+- §1 (Vision) — l'ancien "Mode 3 — écoutes limitées" est absorbé dans Mode Challenge ; nouvelle section "Mode Challenge".
+- §3.12 (NOUVELLE) — schéma `ChallengeRules`, intégration au store, comportement de chaque règle, persistance du timer.
+- §5.1 (state machine) — nouvelle phase `challengeConfig` ajoutée à l'enum `Phase`.
+- §10 (roadmap) — v0.2 = Mode Challenge, v0.3 = Mode Téléphone Ouzbek, v0.4 = Ouzbek Challenge.
+
+**Pourquoi** : sans schéma figé, chaque slice d'implémentation (#26 #28 #29 #30) re-déciderait du nom des champs et de leur sémantique, créant des frictions de merge. Avec un design en place, ces slices sont des tracer-bullets bien définis. La fusion de l'ancien Mode 3 dans Mode Challenge supprime un mode redondant : la règle "limite ré-écoutes" n'a pas besoin d'être un mode à elle seule.
+
+**Comment** :
+- `ChallengeRules` = `{ timerMs: number | null, notesEnabled: boolean, listenLimit: number | null }`. `null` partout = comportement Mode 1 (utile pour le tracer bullet de #26).
+- Store : ajout de `challengeRules: ChallengeRules | null` au `GameState`, actions `startChallenge` / `confirmChallengeRules`. `newRound` conserve les règles (round suivant dans le même mode), `backToMenu` les reset.
+- Phase `challengeConfig` ajoutée entre `menu` et `permission` — un écran de premier plan, pas un overlay (ceci justifie une phase plutôt qu'un `<ConfirmDialog>`).
+- Persistance : `challengeRules` ajouté à `PersistedState` (le slice d'implémentation choisira entre bumper `version: 2` avec migration ou champ optionnel). Pour le timer : `guessingStartedAt: number | null` epoch ms, calcul du remaining à la rehydratation.
+- Comportement timer expiry : transition forcée `guessing --> reveal` (pas d'écran intermédiaire). Timer ne pause pas pendant les ré-écoutes (wall-clock). À ajuster post-HITL si trop brutal / trop dur.
+- Reveal : conditionne le rendu sur `challengeRules` sans forker le composant (pas d'abstraction prématurée — cf. §3.7).
+
+**Anti-goals préservés** : pas de scoring/win-lose même en Challenge, pas de `<RevealMode1>` / `<RevealChallenge>` séparés, pas d'extraction prématurée de `<ConfigScreen />` générique avant que Mode Ouzbek (#27) montre la duplication réelle.
+
+**Slices débloquées** : #26 (squelette + écran config), #28 (timer), #29 (notes off), #30 (ré-écoutes), et indirectement #32 (Ouzbek Challenge).
+
 ## 2026-05-02 — Confirmation "Êtes-vous sûr ?" en modal au-dessus de l'écran de devinage
 
 **Quoi** : la phase `confirmEnd` n'est plus rendue en plein écran (composant `ConfirmEndPhase` supprimé). À la place, `App.tsx` rend `<GuessingPhase>` ET un `<ConfirmDialog>` overlay quand `phase === 'confirmEnd'`. La state machine et le schéma de persistance IndexedDB sont inchangés.

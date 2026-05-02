@@ -30,9 +30,13 @@ Le mode décrit ci-dessus. **C'est le seul mode implémenté en v1.** Les autres
 - Joueur 4 écoute (autant qu'il veut) et propose sa devinette.
 - Implique une étape "transcription phonétique" (texte) qui n'existe pas en Mode 1.
 
-### Mode 3 — Écoutes limitées (futur, v0.3)
+### Mode Challenge — Mode 1 + règles configurables (prévu v0.2)
 
-Variante de Mode 1 où le joueur A configure un **nombre maximum d'écoutes** pour B. Le compteur déjà affiché en Mode 1 (cf. §3.1 décisions) devient bloquant.
+Variante de Mode 1 où Joueur 1 configure les contraintes imposées à Joueur 2 avant de jouer le round : timer pendant le devinage, notes activées ou non, limite du nombre de ré-écoutes. Schéma des règles et comportement détaillés en §3.12. Subsume l'ancien "Mode 3 — écoutes limitées" qui n'est qu'une des règles du Challenge.
+
+### Mode 3 — Écoutes limitées — fusionné dans Mode Challenge
+
+Variante prévue à l'origine comme un mode séparé. La règle "limite de ré-écoutes" est désormais une des trois règles configurables du Mode Challenge (cf. §3.12). Pas de mode séparé pour cette unique règle.
 
 ### Mode futur — Multijoueur en ligne (lointain, hors roadmap)
 
@@ -132,6 +136,99 @@ Chaque décision est suivie d'un `Why:` court. Si tu envisages d'aller à l'inve
 
 - **TS 7 beta confirmé**, choix volontaire. Si l'outillage casse pendant le scaffolding (incompatibilité plugin Vite, types `@types/*`), **fallback temporaire en TS 5.x autorisé** avec note dans ce fichier expliquant pourquoi. Re-tenter l'upgrade régulièrement.
 
+### 3.12 Mode Challenge — règles configurables
+
+Variante du Mode 1 (cf. §1) où le Joueur 1 configure des contraintes pour le Joueur 2 avant le round. Cette section fixe le schéma et l'intégration ; les slices d'implémentation (#26 squelette, #28 timer, #29 notes, #30 ré-écoutes) ne devraient pas avoir à re-décider de ces points.
+
+#### Entrée depuis le menu — bouton séparé
+
+- **Un second bouton "Mode Challenge" sur l'écran Menu**, sous "Nouvelle partie" (Mode 1). Pas de toggle ni d'interrupteur. Why: chaque mode a un setup distinct (Challenge → écran de config, Ouzbek → flow 4-joueurs) ; un toggle bundlerait deux flows incompatibles. Trois ou quatre boutons sur le menu reste lisible. Symétrie avec l'entrée prévue pour le Mode Téléphone Ouzbek (#27).
+
+#### Schéma `ChallengeRules`
+
+```ts
+type ChallengeRules = {
+  /** Durée de la phase guessing en ms. null = pas de timer (comportement Mode 1). */
+  timerMs: number | null;
+  /** Si false, <NotesEditor /> n'est pas rendu et la section notes est absente du reveal. */
+  notesEnabled: boolean;
+  /** Plafond de ré-écoutes ; bouton "Écouter" désactivé quand listenCount >= listenLimit.
+   *  null = illimité (comportement Mode 1). */
+  listenLimit: number | null;
+};
+
+const DEFAULT_CHALLENGE_RULES: ChallengeRules = {
+  timerMs: null,
+  notesEnabled: true,
+  listenLimit: null,
+};
+```
+
+Why ces défauts : opening Mode Challenge sans rien changer = comportement Mode 1 strict. C'est utile pour le tracer bullet (#26) qui valide la mécanique de bout en bout sans avoir de règle réellement appliquée. L'utilisateur doit explicitement activer les contraintes — pas de surprise.
+
+Les UI presets pour le timer (60s / 120s / 180s) et listenLimit (1 / 3 / 5) sont la responsabilité du composant de config (#26), pas du schéma.
+
+#### Intégration au store Zustand
+
+- Ajouter au `GameState` : `challengeRules: ChallengeRules | null`. `null` = on n'est pas en Mode Challenge (ou Mode 1 par défaut).
+- Nouvelle action `startChallenge()` : `menu --> challengeConfig`. **N'écrit pas encore les rules** — c'est `confirmChallengeRules(rules)` qui le fait.
+- Nouvelle action `confirmChallengeRules(rules: ChallengeRules)` : `challengeConfig --> permission`, écrit `challengeRules: rules`.
+- `newRound` (depuis `reveal` en Mode Challenge) : **conserve `challengeRules`**, reset le reste comme aujourd'hui. Why: enchaîner plusieurs rounds avec la même config est le cas usuel ; reconfigurer à chaque round serait pénible.
+- `backToMenu` : reset `challengeRules` à `null` (comme tout le reste via `INITIAL_STATE`).
+- Pas de slice dédié — un seul store, pas d'abstraction prématurée (cf. §3.7).
+
+#### State machine — nouvelle phase `challengeConfig`
+
+```ts
+type Phase =
+  | "menu"
+  | "challengeConfig"   // NOUVEAU — écran de config Mode Challenge
+  | "permission"
+  | "permissionDenied"
+  | "recordingA"
+  | "guessing"
+  | "confirmEnd"
+  | "reveal";
+```
+
+- Transition : `menu --(startChallenge)--> challengeConfig --(confirmChallengeRules)--> permission --> recordingA --> guessing --> ...`
+- Annuler depuis `challengeConfig` : `backToMenu` (réutilisation de l'action existante).
+- Why phase plutôt que modal `<ConfirmDialog>` : le config screen est un écran de premier plan vers lequel l'utilisateur navigue, pas un overlay éphémère. Il a aussi sa propre adresse mentale ("je suis en train de configurer"), ce qui justifie une phase. `<ConfirmDialog>` reste réservé aux confirmations courtes (Fin de round) et pourra éventuellement être réutilisé _à l'intérieur_ de `challengeConfig` pour valider le départ ("Lancer la partie ?").
+
+#### Persistance IndexedDB
+
+- Étendre `PersistedState` avec `challengeRules: ChallengeRules | null`.
+- Choix laissé au slice d'implémentation (#26) entre :
+  - **(a)** bumper `version: 1` → `version: 2` avec migration triviale `v1 --> { ...v1, challengeRules: null }`,
+  - **(b)** traiter le champ comme optionnel à la lecture (`raw.challengeRules ?? null`) sans bumper la version.
+- Ne pas persister la phase `challengeConfig` (reconfigurable, pas un état "engagé"). Les phases persistables restent `guessing`, `confirmEnd`, `reveal` (cf. §3.5).
+- Pour le timer (cf. ci-dessous) : ajouter aussi `guessingStartedAt: number | null` (epoch ms) dans le state persisté pour reprendre le décompte après lock screen.
+
+#### Comportement quand une règle est violée
+
+- **Limite ré-écoutes atteinte** : bouton "Écouter" désactivé. Compteur affiché `X / N`. Aucune transition de phase. Si `listenLimit === null` : compteur reste informatif comme aujourd'hui (`X` simple).
+- **Notes désactivées** : `<NotesEditor />` non rendu pendant `guessing` ; section notes absente du `reveal`. Aucune écriture dans `notes` du store (pas de pollution de la persistance).
+- **Timer expiré** : transition forcée `guessing --> reveal` (saute `confirmEnd`). Why: si B est en train de ré-écouter ou enregistrer quand le timer hit zéro, c'est plus net de basculer directement vers le reveal que de lui imposer un modal "temps écoulé". Le reveal montre déjà tous les artefacts (original, dernière prise de B, notes), B peut comparer là à son rythme. Si HITL test sur device réel révèle que la coupure est trop brutale, on insèrera une phase intermédiaire dans une slice ultérieure — pas en MVP.
+- **Timer ne pause pas pendant les ré-écoutes** : le décompte est wall-clock à partir de l'entrée dans `guessing`. Why: simpler à implémenter (pas d'interaction timer ↔ events audio), plus "challenge-y" (savoir quand écouter fait partie du jeu). Si trop dur en HITL, on ajoutera la pause.
+- **Persistance du timer** : `guessingStartedAt` est écrit au moment de la transition `recordingA → guessing` (uniquement si `challengeRules?.timerMs !== null`). À la rehydratation : `remaining = timerMs - (Date.now() - guessingStartedAt)`. Si `remaining <= 0` : transition immédiate vers `reveal`.
+
+#### Reveal — adaptation conditionnelle
+
+- Le composant `RevealPhase` lit `challengeRules` du store et conditionne l'affichage :
+  - Section notes affichée seulement si `challengeRules?.notesEnabled !== false` (ou si `challengeRules === null`, = Mode 1).
+  - Affichage optionnel "Écoutes : X / N" si `listenLimit !== null`, sinon "Écoutes : X".
+  - Pas de cérémonie particulière selon le mode — l'app reste neutre (cf. §3.4).
+- Pas de fork du composant `RevealPhase` ni d'abstraction `RevealMode1` / `RevealChallenge` — on conditionne dans le composant existant. Si la duplication devient gênante en Mode Ouzbek (cf. §10), on extraira à ce moment-là (cf. §3.7 — pas d'abstraction prématurée).
+
+#### Décisions explicitement reportées aux slices d'implémentation
+
+Le design ci-dessus ne tranche pas les points suivants ; ils relèvent du contexte que seul le code touchera :
+
+- Forme exacte du `<ConfigScreen />` (presets vs slider, layout) — décidé en #26.
+- Position du compteur du timer (header sticky, inline) et format (`mm:ss` vs `Xs`) — #28.
+- Animations / transitions visuelles entre phases — pas de décision écrite, défaut au composant.
+- Si `<ConfirmDialog>` est réutilisé dans `challengeConfig` pour valider le départ — option, pas obligation.
+
 ---
 
 ## 4. Stack technique
@@ -159,6 +256,7 @@ Chaque décision est suivie d'un `Why:` court. Si tu envisages d'aller à l'inve
 ```
 type Phase =
   | 'menu'
+  | 'challengeConfig' // écran de config Mode Challenge (cf. §3.12)
   | 'permission'      // demande micro
   | 'permissionDenied'
   | 'handoffA'        // "Joueur A, éloigne-toi"
@@ -380,9 +478,12 @@ Si un échoue, le commit est bloqué. **Never bypass with `--no-verify`** — co
 | Version | Contenu | Critères de done |
 |---|---|---|
 | **v0.1 (MVP)** | Mode 1 complet, PWA installable, offline-capable, tests à 3 couches en place | Un round complet jouable de bout en bout sur mobile, audio inversé fidèle, pre-commit vert |
-| **v0.2** | Mode 2 (téléphone arabe) — extraire les abstractions APRÈS avoir copié l'orchestration et observé la duplication | Mode 2 jouable à 4 joueurs en local, primitives factorisées sans casser Mode 1 |
-| **v0.3** | Mode 3 (écoutes limitées configurables) — réutilise le compteur déjà présent | Configuration de la limite à l'enregistrement de A, blocage en lecture quand atteinte |
+| **v0.2** | Mode Challenge (#26 squelette + #28 timer + #29 notes off + #30 ré-écoutes) — schéma `ChallengeRules` figé en §3.12 | Round Challenge complet jouable avec règles non-triviales appliquées, persistance du timer survit au lock screen, tests sur l'application des règles |
+| **v0.3** | Mode Téléphone Ouzbek (#27 tracer bullet + #31 reveal enrichi) — design en attente (#25 HITL) | Round Ouzbek 4-joueurs jouable de bout en bout, persistance du round actif, reveal présentant la chaîne complète |
+| **v0.4** | Mode Téléphone Ouzbek Challenge (#32) — combine les deux précédents | Round Ouzbek avec règles `ChallengeRules` appliquées aux phases pertinentes (guessingP4 et/ou guessingP2) |
 | **v0.x** | Réflexion et éventuelle implémentation du mode online | Hors scope actuel |
+
+Note : "Mode 2 (téléphone arabe)" et "Mode 3 (écoutes limitées)" de la roadmap initiale sont absorbés respectivement par Mode Téléphone Ouzbek (v0.3) et Mode Challenge (v0.2). Voir §1 et §3.12.
 
 ---
 

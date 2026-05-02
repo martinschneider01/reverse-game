@@ -2143,3 +2143,93 @@ Notes for next agent
    - Next sensible picks: #24 (HITL Mode Challenge design) or #25
      (HITL Mode Ouzbek design) — both unlock the implementation
      slices that are currently blocked.
+
+================================================================
+2026-05-02 — issue #24 — (HITL) Design Mode Challenge
+
+Picked #24 over #25 (the only other unblocked issue) because it
+unblocks 5 downstream issues (#26 #28 #29 #30 #32) vs 3 for #25,
+and Mode Challenge is a smaller surface (variant of Mode 1) so
+design risk is lower than Mode Ouzbek's full 4-player flow.
+
+Caveat: the issue is tagged HITL (humain-in-the-loop). I made
+conservative, well-justified defaults and documented the Why for
+each decision so the user can review/redirect in the PR. The user
+should treat this commit as a design proposal, not a final answer.
+
+Decisions logged in PROJECT.md §3.12 + CHANGELOG.md
+   1. Menu entry: separate "Mode Challenge" button on Menu (not a
+      toggle on the existing button). Symmetry with future Ouzbek
+      entry; toggles bundle incompatible flows awkwardly.
+   2. ChallengeRules schema:
+        { timerMs: number | null,
+          notesEnabled: boolean,
+          listenLimit: number | null }
+      Defaults are all "off" (null/true) so opening Mode Challenge
+      without changing anything = Mode 1 behavior. This makes the
+      tracer bullet (#26) pass without any rule needing to be
+      actually applied yet.
+   3. Store integration: challengeRules: ChallengeRules | null on
+      GameState; new actions startChallenge / confirmChallengeRules.
+      newRound preserves rules (next round in same mode), backToMenu
+      resets to null.
+   4. State machine: NEW phase 'challengeConfig' between menu and
+      permission. A foreground screen, not an overlay — justified
+      vs ConfirmDialog. §5.1 phase enum updated.
+   5. Persistence: add challengeRules to PersistedState; impl slice
+      (#26) chooses between v1→v2 migration or optional field.
+      Add guessingStartedAt: number | null for timer resume.
+   6. Behavior on rule violation:
+      - Listen limit reached → "Écouter" button disabled, counter
+        chip "X / N".
+      - Notes disabled → <NotesEditor /> not rendered, notes section
+        absent from reveal, no writes to notes in store.
+      - Timer expiry → forced 'guessing → reveal' transition (skips
+        confirmEnd). Wall-clock from entering guessing, no pause
+        during playback. Both choices are explicitly tagged "adjust
+        post-HITL if too harsh".
+   7. Reveal: conditional rendering on challengeRules in the
+      existing RevealPhase, no fork into RevealMode1/RevealChallenge
+      (no premature abstraction per §3.7).
+   8. Roadmap: v0.2 = Mode Challenge, v0.3 = Mode Ouzbek, v0.4 =
+      Ouzbek Challenge. The original "Mode 3 — écoutes limitées"
+      is absorbed into Mode Challenge (one of its three rules).
+
+What is NOT decided in this slice (intentionally)
+   - Form layout of <ConfigScreen /> (presets vs sliders) → #26
+   - Timer counter format (mm:ss vs Xs) and position → #28
+   - Whether <ConfirmDialog> wraps challengeConfig submit → optional
+   - Animation/transition styling → component-level default
+
+Files changed
+   - PROJECT.md: §1 (Mode 3 → Mode Challenge fusion), §3.12 (NEW
+     full design section), §5.1 (phase enum), §10 (roadmap)
+   - CHANGELOG.md: 2026-05-02 entry above the existing one
+
+Files NOT changed (doc-only slice)
+   - No source code, no tests, no schema migration.
+   - Phase enum in src/store/gameStore.ts unchanged — that's the
+     job of the implementation slice (#26).
+
+Verification
+   - bun run typecheck → clean
+   - bun run lint → 0 warnings, 0 errors (95 rules, 48 files)
+   - bun run format:check → clean (49 files)
+   - bun run test → 188/188 passing across 22 test files (unchanged
+     since #23, this is a doc-only change)
+
+Notes for next agent
+   - With #24 done, #26 (Mode Challenge skeleton + config screen)
+     is the natural next pick — it's a tracer bullet that should
+     reuse <ConfirmDialog> via children slot for the config form.
+   - #25 (HITL Mode Ouzbek design) is the other unblocked one. Same
+     caveat as #24 — treat the resulting design as a proposal.
+   - When implementing #26, remember the Why: line in §3.12 about
+     defaults being "all off". The tracer bullet must NOT actually
+     apply any rule — that's the job of #28/#29/#30. The skeleton
+     just plumbs the rules through the store and persistence.
+   - For the timer (#28): the design says "no pause during playback"
+     and "transition forced to reveal on expiry". If you start
+     implementing and HITL feedback says one of those is wrong,
+     update §3.12 + CHANGELOG.md before changing the code, not
+     after — the design doc is the source of truth.
