@@ -164,6 +164,34 @@ describe("<AudioPlayer />", () => {
     expect(setRate).toHaveBeenLastCalledWith(2);
   });
 
+  it("re-primes the iOS audio session on every play tap (issue #20 follow-up)", async () => {
+    const user = userEvent.setup();
+    const { player } = makeFakePlayer();
+    const audioSessionPrimer = vi.fn();
+
+    render(
+      <AudioPlayer
+        recording={fakeRecording}
+        audioContext={fakeCtx}
+        playerFactory={() => player}
+        audioSessionPrimer={audioSessionPrimer}
+      />,
+    );
+
+    // Pause taps should NOT prime — only the start-playback transitions do.
+    await user.click(screen.getByRole("button", { name: /lecture à l'endroit/i }));
+    expect(audioSessionPrimer).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: /^pause$/i }));
+    expect(audioSessionPrimer).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: /lecture à l'endroit/i }));
+    expect(audioSessionPrimer).toHaveBeenCalledTimes(2);
+
+    await user.click(screen.getByRole("button", { name: /lecture à l'envers/i }));
+    expect(audioSessionPrimer).toHaveBeenCalledTimes(3);
+  });
+
   it("fires onPlay when the user starts playback (not when pausing)", async () => {
     const user = userEvent.setup();
     const { player } = makeFakePlayer();

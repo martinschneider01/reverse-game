@@ -50,7 +50,12 @@ export function createPlayer(audioContext: AudioContext, options: PlayerOptions 
     }
     disposeSource();
 
-    if (audioContext.state === "suspended") {
+    // Cover both "suspended" and the iOS-specific "interrupted" state — any
+    // non-running, non-closed state needs resume() before start().
+    if (
+      (audioContext.state as string) !== "running" &&
+      (audioContext.state as string) !== "closed"
+    ) {
       void audioContext.resume();
     }
 

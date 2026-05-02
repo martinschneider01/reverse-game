@@ -4,15 +4,34 @@ import { installAudioContextResume } from "./audioContextResume";
 type FakeContext = {
   state: AudioContextState;
   resume: ReturnType<typeof vi.fn>;
+  addEventListener: ReturnType<typeof vi.fn>;
+  removeEventListener: ReturnType<typeof vi.fn>;
+  // Test-only helper to fire the registered statechange listener.
+  fireStateChange: () => void;
 };
 
 function makeFakeContext(state: AudioContextState = "suspended"): FakeContext {
+  const listeners: Record<string, Array<EventListener>> = {};
+  const addEventListener = vi.fn((type: string, fn: EventListener) => {
+    (listeners[type] ??= []).push(fn);
+  });
+  const removeEventListener = vi.fn((type: string, fn: EventListener) => {
+    const arr = listeners[type];
+    if (arr === undefined) return;
+    const idx = arr.indexOf(fn);
+    if (idx !== -1) arr.splice(idx, 1);
+  });
   return {
     state,
     resume: vi.fn(async () => {
       // resume() in the real API moves state to 'running'; we mimic that
       // so post-recovery checks behave realistically.
     }),
+    addEventListener,
+    removeEventListener,
+    fireStateChange: () => {
+      for (const fn of listeners["statechange"] ?? []) fn(new Event("statechange"));
+    },
   };
 }
 
@@ -187,7 +206,7 @@ describe("installAudioContextResume", () => {
     cleanup();
   });
 
-  it("ignores pageshow events without persisted=true (initial load)", () => {
+  it("recovers via pageshow even without persisted=true (iOS lock/unlock without bfcache)", () => {
     const ctx = makeFakeContext("suspended");
     const cleanup = installAudioContextResume(() => ctx as unknown as AudioContext, {
       isIos: false,
@@ -197,7 +216,56 @@ describe("installAudioContextResume", () => {
     Object.defineProperty(event, "persisted", { value: false });
     window.dispatchEvent(event);
 
+    expect(ctx.resume).toHaveBeenCalledTimes(1);
+    cleanup();
+  });
+
+  it("treats the iOS-specific 'interrupted' state as recoverable", () => {
+    const ctx = makeFakeContext("interrupted" as AudioContextState);
+    const cleanup = installAudioContextResume(() => ctx as unknown as AudioContext, {
+      isIos: true,
+    });
+
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(ctx.resume).toHaveBeenCalledTimes(1);
+    cleanup();
+  });
+
+  it("does nothing when the context is closed", () => {
+    const ctx = makeFakeContext("closed");
+    const cleanup = installAudioContextResume(() => ctx as unknown as AudioContext, {
+      isIos: false,
+    });
+
+    document.dispatchEvent(new Event("visibilitychange"));
+
     expect(ctx.resume).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("arms the gesture handler when the AudioContext fires a non-running statechange", () => {
+    const ctx = makeFakeContext("running");
+    const play = vi.fn(() => Promise.resolve());
+    const audioFactory = vi.fn(() => ({ play, preload: "auto" }) as unknown as HTMLAudioElement);
+
+    const cleanup = installAudioContextResume(() => ctx as unknown as AudioContext, {
+      isIos: true,
+      audioFactory,
+    });
+
+    // Surface the context to the resume module by firing a visibility event
+    // (running context → no recovery, but the statechange listener attaches).
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    // Now the OS interrupts the context.
+    ctx.state = "suspended";
+    ctx.fireStateChange();
+
+    document.dispatchEvent(new Event("pointerdown"));
+
+    expect(ctx.resume).toHaveBeenCalledTimes(1);
+    expect(play).toHaveBeenCalledTimes(1);
     cleanup();
   });
 

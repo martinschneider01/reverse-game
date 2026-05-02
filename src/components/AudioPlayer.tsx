@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPlayer, type Player } from "@/audio/wrappers/player";
 import type { Direction, Recording } from "@/audio/recording";
 import { usePlaybackStore } from "@/store/playbackStore";
+import { primeIosAudioSession } from "@/audio/iosAudioUnlock";
 
 export type AudioPlayerProps = {
   recording: Recording;
@@ -11,6 +12,9 @@ export type AudioPlayerProps = {
   showRateControl?: boolean;
   disabled?: boolean;
   playerFactory?: (ctx: AudioContext) => Player;
+  // Called inside the play-button user gesture, before the player starts.
+  // Defaults to primeIosAudioSession (no-op off iOS). Injected in tests.
+  audioSessionPrimer?: () => void;
   onPlay?: () => void;
   onClose?: () => void;
 };
@@ -55,6 +59,7 @@ export function AudioPlayer({
   showRateControl = true,
   disabled = false,
   playerFactory = createPlayer,
+  audioSessionPrimer = primeIosAudioSession,
   onPlay,
   onClose,
 }: AudioPlayerProps) {
@@ -152,6 +157,12 @@ export function AudioPlayer({
       stopTracking();
       return;
     }
+
+    // Re-prime the iOS AVAudioSession (no-op off iOS). After a few minutes
+    // of screen-lock, the session category drifts back to "ringer/silent"
+    // even when the AudioContext stays running — re-priming inside the user
+    // gesture for every play tap is the simplest cure.
+    audioSessionPrimer();
 
     if (direction !== target) {
       player.setDirection(target);

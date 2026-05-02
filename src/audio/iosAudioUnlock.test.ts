@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { installIosAudioUnlock, isIosAudioCategoryQuirky } from "./iosAudioUnlock";
+import {
+  installIosAudioUnlock,
+  isIosAudioCategoryQuirky,
+  primeIosAudioSession,
+} from "./iosAudioUnlock";
 
 describe("isIosAudioCategoryQuirky", () => {
   it("returns true for iPhone Safari", () => {
@@ -90,5 +94,36 @@ describe("installIosAudioUnlock", () => {
     installIosAudioUnlock({ enabled: true, audioFactory });
 
     expect(() => document.dispatchEvent(new Event("pointerdown"))).not.toThrow();
+  });
+});
+
+describe("primeIosAudioSession", () => {
+  it("plays the silent WAV when enabled (every call, not gated by triggered flag)", () => {
+    const play = vi.fn(() => Promise.resolve());
+    const audioFactory = vi.fn(() => ({ play, preload: "auto" }) as unknown as HTMLAudioElement);
+
+    primeIosAudioSession({ enabled: true, audioFactory });
+    primeIosAudioSession({ enabled: true, audioFactory });
+    primeIosAudioSession({ enabled: true, audioFactory });
+
+    expect(audioFactory).toHaveBeenCalledTimes(3);
+    expect(play).toHaveBeenCalledTimes(3);
+  });
+
+  it("is a no-op when disabled", () => {
+    const play = vi.fn(() => Promise.resolve());
+    const audioFactory = vi.fn(() => ({ play, preload: "auto" }) as unknown as HTMLAudioElement);
+
+    primeIosAudioSession({ enabled: false, audioFactory });
+
+    expect(audioFactory).not.toHaveBeenCalled();
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it("swallows play() rejection", () => {
+    const play = vi.fn(() => Promise.reject(new Error("NotAllowedError")));
+    const audioFactory = vi.fn(() => ({ play, preload: "auto" }) as unknown as HTMLAudioElement);
+
+    expect(() => primeIosAudioSession({ enabled: true, audioFactory })).not.toThrow();
   });
 });
