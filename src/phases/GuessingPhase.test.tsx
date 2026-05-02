@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GuessingPhase } from "./GuessingPhase";
-import { useGameStore, INITIAL_STATE } from "@/store/gameStore";
+import { useGameStore, INITIAL_STATE, DEFAULT_CHALLENGE_RULES } from "@/store/gameStore";
 import { usePlaybackStore, INITIAL_PLAYBACK_STATE } from "@/store/playbackStore";
 import type { Recording } from "@/audio/recording";
 import type { Player } from "@/audio/wrappers/player";
@@ -142,6 +142,54 @@ describe("<GuessingPhase />", () => {
 
     expect(useGameStore.getState().guessRecording).toBeNull();
     expect(await screen.findByRole("button", { name: /enregistrer/i })).toBeInTheDocument();
+  });
+
+  it("renders the notes editor in Mode 1 (challengeRules === null)", () => {
+    render(
+      <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    expect(screen.getByRole("textbox", { name: /notes/i })).toBeInTheDocument();
+  });
+
+  it("renders the notes editor when challengeRules.notesEnabled is true", () => {
+    useGameStore.setState({
+      ...INITIAL_STATE,
+      phase: "guessing",
+      originalRecording: fakeOriginal,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, notesEnabled: true },
+    });
+    render(
+      <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    expect(screen.getByRole("textbox", { name: /notes/i })).toBeInTheDocument();
+  });
+
+  it("hides the notes editor when challengeRules.notesEnabled is false", () => {
+    useGameStore.setState({
+      ...INITIAL_STATE,
+      phase: "guessing",
+      originalRecording: fakeOriginal,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, notesEnabled: false },
+    });
+    render(
+      <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    expect(screen.queryByRole("textbox", { name: /notes/i })).not.toBeInTheDocument();
+  });
+
+  it("does not write to store.notes when notesEnabled is false (no editor to type into)", () => {
+    useGameStore.setState({
+      ...INITIAL_STATE,
+      phase: "guessing",
+      originalRecording: fakeOriginal,
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, notesEnabled: false },
+    });
+    render(
+      <GuessingPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    // No editor means no path for the user to write to notes.
+    expect(useGameStore.getState().notes).toBe("");
+    expect(screen.queryByRole("textbox", { name: /notes/i })).not.toBeInTheDocument();
   });
 
   it("the 'Ta voix' replay player does not expose the gear (and slider) while the original does", async () => {

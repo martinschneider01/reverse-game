@@ -26,10 +26,13 @@ export function GuessingPhase({
   const guessRecording = useGameStore((s) => s.guessRecording);
   const notes = useGameStore((s) => s.notes);
   const listenCount = useGameStore((s) => s.listenCount);
+  const challengeRules = useGameStore((s) => s.challengeRules);
   const setNotes = useGameStore((s) => s.setNotes);
   const setGuessRecording = useGameStore((s) => s.setGuessRecording);
   const incrementListenCount = useGameStore((s) => s.incrementListenCount);
   const endGuessing = useGameStore((s) => s.endGuessing);
+
+  const notesEnabled = challengeRules?.notesEnabled !== false;
 
   if (originalRecording === null) {
     return (
@@ -60,9 +63,11 @@ export function GuessingPhase({
         </p>
       </div>
 
-      <div className="card">
-        <NotesEditor value={notes} onChange={setNotes} />
-      </div>
+      {notesEnabled && (
+        <div className="card">
+          <NotesEditor value={notes} onChange={setNotes} />
+        </div>
+      )}
 
       <div className="card">
         <h3>Ta voix</h3>

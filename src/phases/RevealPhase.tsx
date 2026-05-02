@@ -11,8 +11,11 @@ export function RevealPhase({ audioContextFactory, playerFactory }: RevealPhaseP
   const originalRecording = useGameStore((s) => s.originalRecording);
   const guessRecording = useGameStore((s) => s.guessRecording);
   const notes = useGameStore((s) => s.notes);
+  const challengeRules = useGameStore((s) => s.challengeRules);
   const newRound = useGameStore((s) => s.newRound);
   const backToMenu = useGameStore((s) => s.backToMenu);
+
+  const notesEnabled = challengeRules?.notesEnabled !== false;
 
   if (originalRecording === null) {
     return (
@@ -53,16 +56,18 @@ export function RevealPhase({ audioContextFactory, playerFactory }: RevealPhaseP
         </div>
       )}
 
-      <div className="card">
-        <h3>Notes</h3>
-        {notes === "" ? (
-          <p className="reveal-notes">
-            <em>Aucune note prise.</em>
-          </p>
-        ) : (
-          <p aria-label="Notes">{notes}</p>
-        )}
-      </div>
+      {notesEnabled && (
+        <div className="card">
+          <h3>Notes</h3>
+          {notes === "" ? (
+            <p className="reveal-notes">
+              <em>Aucune note prise.</em>
+            </p>
+          ) : (
+            <p aria-label="Notes">{notes}</p>
+          )}
+        </div>
+      )}
 
       <button type="button" onClick={newRound}>
         Nouvelle partie

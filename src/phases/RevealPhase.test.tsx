@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RevealPhase } from "./RevealPhase";
-import { useGameStore, INITIAL_STATE } from "@/store/gameStore";
+import { useGameStore, INITIAL_STATE, DEFAULT_CHALLENGE_RULES } from "@/store/gameStore";
 import { usePlaybackStore, INITIAL_PLAYBACK_STATE } from "@/store/playbackStore";
 import type { Recording } from "@/audio/recording";
 import type { Player } from "@/audio/wrappers/player";
@@ -117,6 +117,48 @@ describe("<RevealPhase />", () => {
     expect(s.guessRecording).toBeNull();
     expect(s.notes).toBe("");
     expect(s.listenCount).toBe(0);
+  });
+
+  it("renders the notes section in Mode 1 (challengeRules === null)", () => {
+    render(
+      <RevealPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    expect(screen.getByRole("heading", { name: /^notes$/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/notes/i)).toHaveTextContent("ma note");
+  });
+
+  it("renders the notes section when challengeRules.notesEnabled is true", () => {
+    useGameStore.setState({
+      ...INITIAL_STATE,
+      phase: "reveal",
+      originalRecording: fakeOriginal,
+      guessRecording: fakeGuess,
+      notes: "ma note",
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, notesEnabled: true },
+    });
+    render(
+      <RevealPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    expect(screen.getByRole("heading", { name: /^notes$/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/notes/i)).toHaveTextContent("ma note");
+  });
+
+  it("hides the notes section when challengeRules.notesEnabled is false", () => {
+    useGameStore.setState({
+      ...INITIAL_STATE,
+      phase: "reveal",
+      originalRecording: fakeOriginal,
+      guessRecording: fakeGuess,
+      notes: "ma note",
+      challengeRules: { ...DEFAULT_CHALLENGE_RULES, notesEnabled: false },
+    });
+    render(
+      <RevealPhase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    expect(screen.queryByRole("heading", { name: /^notes$/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/notes/i)).not.toBeInTheDocument();
+    // The two players (original + guess) should still render.
+    expect(screen.getAllByRole("button", { name: /lecture à l'endroit/i })).toHaveLength(2);
   });
 
   it("renders a defensive alert when originalRecording is null", () => {

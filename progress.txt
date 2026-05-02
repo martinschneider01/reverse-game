@@ -2347,3 +2347,83 @@ Notes for next agent
    - #25 (HITL design Mode Ouzbek) is still pending and would
      unblock the v0.3 work. Probably alternate: do one rule-app
      slice (#29), then #25.
+
+================================================================
+2026-05-02 — issue #29 — Mode Challenge: désactivation des notes
+
+Picked #29 over #25/#28/#30 because the previous agent in the log
+explicitly recommended it as the cleanest tracer for the rule-
+application pattern (~<100 LOC + tests). #28 (timer) is the
+heaviest of the rule slices and worth saving for a fresher
+session; #30 (listen limit) is medium; #25 is HITL design and
+two HITL slices in a row felt unnecessary. #29 also sets a clean
+template for the other two rule-app slices to follow.
+
+What landed
+   - <NotesEditor /> in GuessingPhase is wrapped in a
+     `notesEnabled && (...)` block. Source of truth:
+     `challengeRules?.notesEnabled !== false` — null (Mode 1)
+     and `true` both render the editor; only an explicit
+     `false` hides it. Why: matches the §3.12 contract
+     ("notes activées seulement si challengeRules?.notesEnabled
+     !== false (ou si challengeRules === null, = Mode 1)").
+   - Notes <div className="card"> in RevealPhase wrapped in
+     the same conditional, so the section is absent from the
+     reveal when the rule is off.
+   - No store changes. The "no pollution of persistence"
+     acceptance criterion is satisfied structurally: setNotes
+     is only called from <NotesEditor onChange>, and the editor
+     isn't rendered when notesEnabled is false. Adding a guard
+     in setNotes would be redundant defensive code (cf. CLAUDE
+     "don't add validation for scenarios that can't happen").
+
+What is intentionally NOT done
+   - No counter chip, no listen-limit wiring, no timer logic.
+     Those are #30 / #28.
+   - No store-side guard on setNotes. The structural argument
+     above means a guard would only protect against a future
+     caller that doesn't exist yet — premature defense.
+   - No abstraction across phases — the conditional is a
+     two-line wrap in each phase. Pulling it into a hook or
+     util would be three callers worth of premature abstraction
+     when there are two callers.
+
+Files changed
+   - src/phases/GuessingPhase.tsx: read challengeRules, derive
+     notesEnabled, wrap <NotesEditor /> card.
+   - src/phases/RevealPhase.tsx: same pattern, wrap notes card.
+   - src/phases/GuessingPhase.test.tsx: 4 new tests
+     (Mode 1 default / explicit notesEnabled=true / =false /
+     no notes pollution).
+   - src/phases/RevealPhase.test.tsx: 3 new tests
+     (Mode 1 default / =true / =false hides section).
+
+Verification
+   - bun run typecheck → clean
+   - bun run lint → 0 warnings, 0 errors (95 rules, 50 files)
+   - bun run format:check → clean (51 files)
+   - bun run test → 211/211 passing across 23 test files
+     (was 204/23 — added 7 tests, no new test files)
+
+Notes for next agent
+   - Pattern set by #29 for rule-application slices: read
+     challengeRules in the phase, derive a local boolean, wrap
+     the affected JSX. Keep it dumb until duplication forces
+     extraction. #30 (listen limit) follows the same shape
+     except it modifies button state (disabled + counter
+     `X / N`) instead of presence/absence.
+   - For #30: §3.12 says `listenCount >= listenLimit` disables
+     the "Écouter" button and the counter chip becomes `X / N`
+     instead of plain `X`. That counter chip already exists in
+     GuessingPhase ("Écoutes : 0"). The "Écouter" button is
+     inside <AudioPlayer /> — check whether the player needs a
+     `disabled` prop or whether GuessingPhase can override.
+   - For #28: this is where you'll need to add
+     `guessingStartedAt: number | null` to PersistedState
+     (§3.12 calls it out). That's the moment to consider
+     bumping the schema to v2 — bundle both fields if not done
+     already. The decision hook in CHANGELOG.md from #26 says
+     the optional-field pattern was used for challengeRules;
+     stay consistent unless there's a reason not to.
+   - #25 (HITL Mode Ouzbek design) is still pending. After the
+     three rule-app slices land, that's the next big surface.
