@@ -106,6 +106,13 @@ describe("<RecordingP3Phase />", () => {
     expect(screen.getByRole("button", { name: /lecture à l'envers/i })).toBeDisabled();
   });
 
+  it("does NOT leak the J1 thème to J3 (issue #39)", () => {
+    useGameStore.setState({ ouzbekThemeP1: "voyage" });
+    renderPhase();
+    expect(screen.queryByLabelText(/thème de j1/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Thème :/i)).not.toBeInTheDocument();
+  });
+
   it("clicking 'Passer au Joueur 4' transitions to handoffP4 with the recording stored", async () => {
     const user = userEvent.setup();
     renderPhase();

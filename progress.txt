@@ -3650,3 +3650,130 @@ Notes pour le prochain agent
      verra le changement au prochain tick (≤250ms). Acceptable pour un
      bip de 180ms : si le bip est en train de jouer quand l'utilisateur
      démarre playback, il finira son décay ; le suivant sera inhibé.
+
+
+────────────────────────────────────────────────────────────────────────────
+2026-05-02 20:10 CEST · Issue #39 — Mode Ouzbek : J1 saisit un thème,
+                        visible uniquement par J4 + dans le reveal
+────────────────────────────────────────────────────────────────────────────
+
+Contexte
+
+   Le thème = un mot court (≤30 char, optionnel) saisi par J1 pendant
+   `recordingP1`, qui aide UNIQUEMENT J4 à reconstituer la phrase. Le
+   thème ne doit pas leak à J2 (`guessingP2`) ni à J3 (`recordingP3`),
+   ni dans les `handoffP*`. Il doit apparaître chez J4 (`guessingP4`)
+   et dans `revealOuzbek`.
+
+Pattern suivi
+
+   Calqué sur `ouzbekNoteP2` (PR #36) pour rester cohérent :
+   - String dans `GameState`, init `""`.
+   - Action `setOuzbekThemeP1` gardée par `phase === "recordingP1"`
+     (symétrique à `setOuzbekNoteP2` qui guard par `guessingP2`).
+   - Reset par `newOuzbekRound()` et par `backToMenu()` (via spread
+     INITIAL_STATE déjà en place).
+   - Pas de bump de `PersistedState.version` — lecture optionnelle
+     `?? ""` dans le rehydrate raw, comme pour les autres champs Ouzbek.
+
+Fichiers touchés
+
+   src/store/gameStore.ts
+     - `ouzbekThemeP1: string` dans `GameState` + `INITIAL_STATE`.
+     - Action `setOuzbekThemeP1` + entrée `ActionKey`.
+     - Reset dans `newOuzbekRound`.
+   src/store/persistence.ts
+     - `ouzbekThemeP1` dans `PersistedState` + `RawState` (optionnel
+       avec `?? ""` à la rehydratation).
+     - Save : pass-through.
+   src/store/persistGameStore.ts
+     - Ajout du champ dans `snapshot()`.
+   src/App.tsx
+     - Ajout du champ dans le `setState` de rehydratation.
+   src/phases/RecordingP1Phase.tsx
+     - Input `<label>Thème (optionnel)…` ajouté dans la card, au-dessus
+       du recorder/preview. Visible dans les deux sous-vues
+       (no-preview + preview) — l'utilisateur peut toujours saisir
+       ou éditer le thème jusqu'au "Passer au Joueur 2".
+     - `maxLength={30}`, placeholder "Un mot pour aider…".
+     - className `theme-input` (layout flex column gap 0.25rem).
+   src/phases/GuessingP4Phase.tsx
+     - Lecture `ouzbekThemeP1` ; rend `<p aria-label="Thème de J1">
+       Thème : {…}</p>` au-dessus du player reverse, uniquement si
+       non vide. Sinon : aucun bloc rendu.
+   src/phases/RevealOuzbekPhase.tsx
+     - Même pattern, dans la card "Joueur 1" du reveal, au-dessus du
+       player. Cohérent avec §3.13 "tout est lisible" du reveal.
+   src/index.css
+     - `.theme-input { display:flex; flex-direction:column; gap:0.25rem }`
+
+Tests ajoutés (+16 tests vs baseline 383 → 399 total)
+
+   src/store/gameStore.test.ts (+4 tests)
+     - "initial state" : `ouzbekThemeP1` à `""`.
+     - "setOuzbekThemeP1 writes when in recordingP1".
+     - "setOuzbekThemeP1 is a no-op outside recordingP1".
+     - "newOuzbekRound clears Ouzbek artefacts" : assertion sur
+       `ouzbekThemeP1`.
+     - "backToMenu resets ouzbekThemeP1".
+
+   src/store/persistence.test.ts (+1 test)
+     - "loads ouzbekThemeP1 as '' when absent from a pre-thème save"
+       (rehydratation legacy).
+     - Round-trip étendu pour vérifier `ouzbekThemeP1: "voyage"`.
+
+   src/store/persistGameStore.test.ts (snapshot étendu)
+     - `ouzbekThemeP1` dans le snapshot Ouzbek.
+
+   src/phases/RecordingP1Phase.test.tsx (+3 tests, describe "Thème")
+     - Input rendu avec `maxLength=30`.
+     - Typing → store updated.
+     - Input toujours présent en pré-écoute (le user peut compléter
+       après la prise).
+
+   src/phases/GuessingP4Phase.test.tsx (+2 tests, describe "Thème de J1")
+     - Rend le thème quand non-vide.
+     - Aucun bloc quand vide.
+
+   src/phases/RevealOuzbekPhase.test.tsx (+2 tests, describe "Thème de J1")
+     - Rend le thème quand non-vide.
+     - Aucun bloc quand vide.
+
+   src/phases/GuessingP2Phase.test.tsx (+1 test)
+     - Vérifie qu'avec `ouzbekThemeP1: "voyage"`, ni le label "Thème
+       de J1" ni le mot "voyage" n'apparaissent (pas de leak à J2).
+
+   src/phases/RecordingP3Phase.test.tsx (+1 test)
+     - Idem pour J3 (pas de leak à J3 pendant `recordingP3`).
+
+Verification (toutes vertes)
+
+   - bun run typecheck → clean
+   - bun run lint → 0 warnings, 0 errors (95 rules, 73 files)
+   - bun run format:check → clean (74 files)
+   - bun run test → 399/399 passing across 33 test files
+     (+16 tests vs baseline 383)
+
+Notes pour le prochain agent
+
+   - Reste UNE issue ouverte : #38 (waveform clic-to-seek). Touche le
+     wrapper `src/audio/wrappers/player.ts` (`play(offsetMs?)`) +
+     `<AudioPlayer />` (handler clic + conversion frac→offset, qui
+     diffère selon `direction === "reverse"`). Plus risqué que #39 —
+     primitive audio, attention aux régressions sur `lockDirection`
+     et au tracking du playhead.
+   - Pour le thème, j'ai laissé l'input visible aussi en pré-écoute
+     (vue `preview !== null`) — l'utilisateur peut donc enregistrer
+     d'abord puis ajouter un thème. Si HITL préfère "input figé après
+     enregistrement", déplacer le `themeInput` vers la seule branche
+     no-preview.
+   - Pas de feedback visible quand le thème dépasse 30 char : le
+     `maxLength` HTML coupe la frappe. Pas de message d'erreur
+     (cohérent avec `customTimer` du Mode Challenge).
+   - Le thème survit à `cancelEnd`/lock-screen via la persistance IDB
+     dans toutes les phases savable Ouzbek (handoffP2/3/4, guessingP2/P4,
+     revealOuzbek). Les phases `recording*` ne sont pas savable de
+     toute manière (cf. `SAVABLE_PHASES`), donc une perte de focus
+     pendant `recordingP1` perdra le thème — c'est cohérent avec le
+     traitement du recorder lui-même (pas de resume d'un MediaRecorder
+     en cours).

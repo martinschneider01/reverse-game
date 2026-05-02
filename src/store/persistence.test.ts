@@ -20,6 +20,7 @@ function makeState(overrides: Partial<PersistedState> = {}): PersistedState {
     challengeRules: null,
     guessingStartedAt: null,
     ouzbekRecordingP1: null,
+    ouzbekThemeP1: "",
     ouzbekNoteP2: "",
     ouzbekRecordingP3: null,
     ...overrides,
@@ -150,6 +151,7 @@ describe("persistence", () => {
       // is keyed on ouzbekRecordingP1 instead.
       originalRecording: null,
       ouzbekRecordingP1: { blob: new Blob(["P1"], { type: "audio/webm" }), durationMs: 1000 },
+      ouzbekThemeP1: "voyage",
       ouzbekNoteP2: "transcription de J2",
       ouzbekRecordingP3: { blob: new Blob(["P3"], { type: "audio/webm" }), durationMs: 800 },
     });
@@ -160,6 +162,7 @@ describe("persistence", () => {
     expect(loaded?.originalRecording).toBeNull();
     expect(loaded?.ouzbekRecordingP1?.durationMs).toBe(1000);
     expect(await loaded?.ouzbekRecordingP1?.blob.text()).toBe("P1");
+    expect(loaded?.ouzbekThemeP1).toBe("voyage");
     expect(loaded?.ouzbekNoteP2).toBe("transcription de J2");
     expect(loaded?.ouzbekRecordingP3?.durationMs).toBe(800);
     expect(await loaded?.ouzbekRecordingP3?.blob.text()).toBe("P3");
@@ -207,8 +210,61 @@ describe("persistence", () => {
     const loaded = await loadPersistedState();
     expect(loaded?.mode).toBe("mode1");
     expect(loaded?.ouzbekRecordingP1).toBeNull();
+    expect(loaded?.ouzbekThemeP1).toBe("");
     expect(loaded?.ouzbekNoteP2).toBe("");
     expect(loaded?.ouzbekRecordingP3).toBeNull();
+  });
+
+  it("loads ouzbekThemeP1 as '' when absent from a pre-thème save (issue #39)", async () => {
+    // Simulate a save written before the ouzbekThemeP1 field existed.
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.open("reverso", 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains("state")) db.createObjectStore("state");
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction("state", "readwrite");
+        tx.objectStore("state").put(
+          {
+            version: 1,
+            phase: "guessingP4",
+            mode: "ouzbek",
+            originalRecording: null,
+            guessRecording: null,
+            notes: "",
+            listenCount: 0,
+            challengeRules: null,
+            ouzbekRecordingP1: {
+              data: new ArrayBuffer(0),
+              mimeType: "audio/webm",
+              durationMs: 1000,
+            },
+            ouzbekNoteP2: "transcription",
+            ouzbekRecordingP3: {
+              data: new ArrayBuffer(0),
+              mimeType: "audio/webm",
+              durationMs: 800,
+            },
+            // no ouzbekThemeP1 key
+          },
+          "current",
+        );
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => {
+          db.close();
+          reject(tx.error ?? new Error("seed failed"));
+        };
+      };
+      req.onerror = () => reject(req.error ?? new Error("open failed"));
+    });
+
+    const loaded = await loadPersistedState();
+    expect(loaded?.ouzbekThemeP1).toBe("");
   });
 
   it("loads challengeRules as null when absent from a pre-Mode-Challenge save", async () => {

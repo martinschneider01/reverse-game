@@ -7,6 +7,7 @@ import type { Recording } from "@/audio/recording";
 import { useGameStore } from "@/store/gameStore";
 
 const MAX_DURATION_MS = 15000;
+const THEME_MAX_LENGTH = 30;
 
 export type RecordingP1PhaseProps = {
   audioContextFactory: () => AudioContext;
@@ -23,8 +24,24 @@ export function RecordingP1Phase({
   decode,
   reverse,
 }: RecordingP1PhaseProps) {
+  const ouzbekThemeP1 = useGameStore((s) => s.ouzbekThemeP1);
+  const setOuzbekThemeP1 = useGameStore((s) => s.setOuzbekThemeP1);
   const finishRecordingP1 = useGameStore((s) => s.finishRecordingP1);
   const [preview, setPreview] = useState<Recording | null>(null);
+
+  const themeInput = (
+    <label className="theme-input">
+      Thème (optionnel)
+      <input
+        type="text"
+        aria-label="Thème"
+        maxLength={THEME_MAX_LENGTH}
+        placeholder="Un mot pour aider…"
+        value={ouzbekThemeP1}
+        onChange={(e) => setOuzbekThemeP1(e.target.value)}
+      />
+    </label>
+  );
 
   if (preview === null) {
     return (
@@ -33,6 +50,7 @@ export function RecordingP1Phase({
         <h2>Enregistre ton vocal sans que personne ne t'écoute</h2>
         <p>Prononce une phrase courte (15 s max).</p>
         <div className="card">
+          {themeInput}
           <AudioRecorder
             maxDurationMs={MAX_DURATION_MS}
             onRecorded={setPreview}
@@ -52,6 +70,7 @@ export function RecordingP1Phase({
       <h2>Pré-écoute</h2>
       <p>Vérifie ta prise avant de passer le téléphone au Joueur 2.</p>
       <div className="card">
+        {themeInput}
         <AudioPlayer
           recording={preview}
           audioContext={audioContextFactory()}

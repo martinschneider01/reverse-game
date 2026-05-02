@@ -77,6 +77,15 @@ describe("<GuessingP2Phase />", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 
+  it("does NOT leak the J1 thème to J2 (issue #39)", () => {
+    useGameStore.setState({ ouzbekThemeP1: "voyage" });
+    render(
+      <GuessingP2Phase audioContextFactory={audioContextFactory} playerFactory={makeFakePlayer} />,
+    );
+    expect(screen.queryByLabelText(/thème de j1/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/voyage/i)).not.toBeInTheDocument();
+  });
+
   describe("Challenge rules", () => {
     it("does not render a listen counter when no challengeRules are set (vanilla Ouzbek)", () => {
       useGameStore.setState({ challengeRules: null });

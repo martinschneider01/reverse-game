@@ -56,6 +56,9 @@ export type GameState = {
 
   // Mode Téléphone Ouzbek (cf. §3.13)
   ouzbekRecordingP1: Recording | null;
+  /** Optional one-word hint typed by J1 during recordingP1, revealed only to
+   *  J4 (in guessingP4) and in the final reveal. Empty string = no hint. */
+  ouzbekThemeP1: string;
   ouzbekNoteP2: string;
   ouzbekRecordingP3: Recording | null;
 
@@ -80,6 +83,7 @@ export type GameState = {
   backToMenu: () => void;
 
   // Mode Ouzbek actions (cf. §3.13)
+  setOuzbekThemeP1: (theme: string) => void;
   finishRecordingP1: (recording: Recording) => void;
   startGuessingP2: () => void;
   setOuzbekNoteP2: (note: string) => void;
@@ -110,6 +114,7 @@ type ActionKey =
   | "forceReveal"
   | "newRound"
   | "backToMenu"
+  | "setOuzbekThemeP1"
   | "finishRecordingP1"
   | "startGuessingP2"
   | "setOuzbekNoteP2"
@@ -132,6 +137,7 @@ export const INITIAL_STATE: Slice = {
   challengeRules: null,
   guessingStartedAt: null,
   ouzbekRecordingP1: null,
+  ouzbekThemeP1: "",
   ouzbekNoteP2: "",
   ouzbekRecordingP3: null,
 };
@@ -227,6 +233,9 @@ export const useGameStore = create<GameState>((set) => ({
 
   backToMenu: () => set({ ...INITIAL_STATE }),
 
+  setOuzbekThemeP1: (theme) =>
+    set((s) => (s.phase === "recordingP1" ? { ouzbekThemeP1: theme } : {})),
+
   finishRecordingP1: (recording) =>
     set((s) =>
       s.phase === "recordingP1" ? { phase: "handoffP2", ouzbekRecordingP1: recording } : {},
@@ -275,6 +284,7 @@ export const useGameStore = create<GameState>((set) => ({
         ? {
             phase: "recordingP1",
             ouzbekRecordingP1: null,
+            ouzbekThemeP1: "",
             ouzbekNoteP2: "",
             ouzbekRecordingP3: null,
             listenCount: 0,

@@ -81,4 +81,30 @@ describe("<RecordingP1Phase />", () => {
     expect(s.ouzbekRecordingP1).not.toBeNull();
     expect(s.ouzbekRecordingP1?.forward).toBe(fakeForward);
   });
+
+  describe("Thème (issue #39)", () => {
+    it("renders an optional thème input next to the recording controls", () => {
+      renderPhase();
+      const input = screen.getByLabelText(/thème/i);
+      expect(input).toBeInTheDocument();
+      expect(input).toHaveAttribute("maxLength", "30");
+    });
+
+    it("typing into the thème input writes ouzbekThemeP1 to the store", async () => {
+      const user = userEvent.setup();
+      renderPhase();
+      await user.type(screen.getByLabelText(/thème/i), "voyage");
+      expect(useGameStore.getState().ouzbekThemeP1).toBe("voyage");
+    });
+
+    it("keeps the thème editable on the pré-écoute view", async () => {
+      const user = userEvent.setup();
+      renderPhase();
+      await user.click(screen.getByRole("button", { name: /enregistrer/i }));
+      await user.click(await screen.findByRole("button", { name: /arrêter/i }));
+      // pré-écoute view
+      expect(await screen.findByRole("heading", { name: /pré-écoute/i })).toBeInTheDocument();
+      expect(screen.getByLabelText(/thème/i)).toBeInTheDocument();
+    });
+  });
 });

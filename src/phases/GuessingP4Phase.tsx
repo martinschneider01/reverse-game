@@ -14,6 +14,7 @@ export type GuessingP4PhaseProps = {
 
 export function GuessingP4Phase({ audioContextFactory, playerFactory }: GuessingP4PhaseProps) {
   const ouzbekRecordingP3 = useGameStore((s) => s.ouzbekRecordingP3);
+  const ouzbekThemeP1 = useGameStore((s) => s.ouzbekThemeP1);
   const listenCount = useGameStore((s) => s.listenCount);
   const challengeRules = useGameStore((s) => s.challengeRules);
   const incrementListenCount = useGameStore((s) => s.incrementListenCount);
@@ -64,6 +65,7 @@ export function GuessingP4Phase({ audioContextFactory, playerFactory }: Guessing
 
       <div className="card">
         <h3>Enregistrement de J3 (à l'envers)</h3>
+        {ouzbekThemeP1 !== "" && <p aria-label="Thème de J1">Thème : {ouzbekThemeP1}</p>}
         <AudioPlayer
           recording={ouzbekRecordingP3}
           audioContext={ctx}

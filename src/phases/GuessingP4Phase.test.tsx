@@ -137,4 +137,28 @@ describe("<GuessingP4Phase />", () => {
       expect(screen.getByLabelText(/temps restant/i)).toBeInTheDocument();
     });
   });
+
+  describe("Thème de J1 (issue #39)", () => {
+    it("renders the thème when J1 saved one", () => {
+      useGameStore.setState({ ouzbekThemeP1: "voyage" });
+      render(
+        <GuessingP4Phase
+          audioContextFactory={audioContextFactory}
+          playerFactory={makeFakePlayer}
+        />,
+      );
+      expect(screen.getByLabelText(/thème de j1/i)).toHaveTextContent(/voyage/);
+    });
+
+    it("does NOT render any thème block when ouzbekThemeP1 is empty", () => {
+      useGameStore.setState({ ouzbekThemeP1: "" });
+      render(
+        <GuessingP4Phase
+          audioContextFactory={audioContextFactory}
+          playerFactory={makeFakePlayer}
+        />,
+      );
+      expect(screen.queryByLabelText(/thème de j1/i)).not.toBeInTheDocument();
+    });
+  });
 });

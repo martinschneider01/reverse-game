@@ -52,6 +52,7 @@ export type PersistedState = {
   guessingStartedAt: number | null;
   // Mode Ouzbek
   ouzbekRecordingP1: PersistedRecording | null;
+  ouzbekThemeP1: string;
   ouzbekNoteP2: string;
   ouzbekRecordingP3: PersistedRecording | null;
 };
@@ -75,6 +76,7 @@ type RawState = {
   challengeRules?: PersistedChallengeRules | null;
   guessingStartedAt?: number | null;
   ouzbekRecordingP1?: RawRecording | null;
+  ouzbekThemeP1?: string;
   ouzbekNoteP2?: string;
   ouzbekRecordingP3?: RawRecording | null;
 };
@@ -141,6 +143,7 @@ export async function loadPersistedState(): Promise<PersistedState | null> {
       challengeRules: raw.challengeRules ?? null,
       guessingStartedAt: raw.guessingStartedAt ?? null,
       ouzbekRecordingP1: raw.ouzbekRecordingP1 != null ? fromRaw(raw.ouzbekRecordingP1) : null,
+      ouzbekThemeP1: raw.ouzbekThemeP1 ?? "",
       ouzbekNoteP2: raw.ouzbekNoteP2 ?? "",
       ouzbekRecordingP3: raw.ouzbekRecordingP3 != null ? fromRaw(raw.ouzbekRecordingP3) : null,
     };
@@ -168,6 +171,7 @@ export async function savePersistedState(state: PersistedState): Promise<void> {
       guessingStartedAt: state.guessingStartedAt,
       ouzbekRecordingP1:
         state.ouzbekRecordingP1 !== null ? await toRaw(state.ouzbekRecordingP1) : null,
+      ouzbekThemeP1: state.ouzbekThemeP1,
       ouzbekNoteP2: state.ouzbekNoteP2,
       ouzbekRecordingP3:
         state.ouzbekRecordingP3 !== null ? await toRaw(state.ouzbekRecordingP3) : null,

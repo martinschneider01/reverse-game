@@ -119,6 +119,7 @@ export function App() {
           challengeRules: persisted.challengeRules,
           guessingStartedAt: expired ? null : persisted.guessingStartedAt,
           ouzbekRecordingP1: ouzbekP1,
+          ouzbekThemeP1: persisted.ouzbekThemeP1,
           ouzbekNoteP2: persisted.ouzbekNoteP2,
           ouzbekRecordingP3: ouzbekP3,
         });

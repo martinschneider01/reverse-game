@@ -52,6 +52,7 @@ function snapshot(s: GameState): PersistedState | null {
       s.ouzbekRecordingP1 !== null
         ? { blob: s.ouzbekRecordingP1.blob, durationMs: s.ouzbekRecordingP1.durationMs }
         : null,
+    ouzbekThemeP1: s.ouzbekThemeP1,
     ouzbekNoteP2: s.ouzbekNoteP2,
     ouzbekRecordingP3:
       s.ouzbekRecordingP3 !== null

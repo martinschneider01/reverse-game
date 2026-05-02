@@ -167,6 +167,7 @@ describe("startGameStorePersistence", () => {
       phase: "handoffP2",
       mode: "ouzbek",
       ouzbekRecordingP1: fakeRecording,
+      ouzbekThemeP1: "voyage",
     });
     vi.advanceTimersByTime(5);
     await Promise.resolve();
@@ -179,6 +180,7 @@ describe("startGameStorePersistence", () => {
       blob: fakeRecording.blob,
       durationMs: 500,
     });
+    expect(call?.ouzbekThemeP1).toBe("voyage");
 
     stop();
   });

@@ -9,6 +9,7 @@ export type RevealOuzbekPhaseProps = {
 
 export function RevealOuzbekPhase({ audioContextFactory, playerFactory }: RevealOuzbekPhaseProps) {
   const ouzbekRecordingP1 = useGameStore((s) => s.ouzbekRecordingP1);
+  const ouzbekThemeP1 = useGameStore((s) => s.ouzbekThemeP1);
   const ouzbekNoteP2 = useGameStore((s) => s.ouzbekNoteP2);
   const ouzbekRecordingP3 = useGameStore((s) => s.ouzbekRecordingP3);
   const newOuzbekRound = useGameStore((s) => s.newOuzbekRound);
@@ -37,6 +38,7 @@ export function RevealOuzbekPhase({ audioContextFactory, playerFactory }: Reveal
         <p className="kicker">Joueur 1</p>
         <h3>Enregistrement original</h3>
         <p>Lisible à l'endroit et à l'envers.</p>
+        {ouzbekThemeP1 !== "" && <p aria-label="Thème de J1">Thème : {ouzbekThemeP1}</p>}
         <AudioPlayer
           recording={ouzbekRecordingP1}
           audioContext={ctx}

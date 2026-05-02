@@ -42,6 +42,7 @@ describe("gameStore", () => {
       expect(s.listenCount).toBe(0);
       expect(s.challengeRules).toBeNull();
       expect(s.ouzbekRecordingP1).toBeNull();
+      expect(s.ouzbekThemeP1).toBe("");
       expect(s.ouzbekNoteP2).toBe("");
       expect(s.ouzbekRecordingP3).toBeNull();
     });
@@ -588,6 +589,18 @@ describe("gameStore", () => {
       expect(useGameStore.getState().guessingStartedAt).toBeNull();
     });
 
+    it("setOuzbekThemeP1 writes when in recordingP1", () => {
+      useGameStore.setState({ phase: "recordingP1", mode: "ouzbek" });
+      useGameStore.getState().setOuzbekThemeP1("voyage");
+      expect(useGameStore.getState().ouzbekThemeP1).toBe("voyage");
+    });
+
+    it("setOuzbekThemeP1 is a no-op outside recordingP1", () => {
+      useGameStore.setState({ phase: "guessingP2", ouzbekThemeP1: "" });
+      useGameStore.getState().setOuzbekThemeP1("nope");
+      expect(useGameStore.getState().ouzbekThemeP1).toBe("");
+    });
+
     it("setOuzbekNoteP2 writes when in guessingP2", () => {
       useGameStore.setState({ phase: "guessingP2", mode: "ouzbek" });
       useGameStore.getState().setOuzbekNoteP2("ma transcription");
@@ -694,6 +707,7 @@ describe("gameStore", () => {
         phase: "revealOuzbek",
         mode: "ouzbek",
         ouzbekRecordingP1: fakeRecording,
+        ouzbekThemeP1: "voyage",
         ouzbekNoteP2: "scribbles",
         ouzbekRecordingP3: otherRecording,
       });
@@ -702,6 +716,7 @@ describe("gameStore", () => {
       expect(s.phase).toBe("recordingP1");
       expect(s.mode).toBe("ouzbek");
       expect(s.ouzbekRecordingP1).toBeNull();
+      expect(s.ouzbekThemeP1).toBe("");
       expect(s.ouzbekNoteP2).toBe("");
       expect(s.ouzbekRecordingP3).toBeNull();
     });
@@ -750,6 +765,16 @@ describe("gameStore", () => {
       expect(s.ouzbekRecordingP1).toBeNull();
       expect(s.ouzbekNoteP2).toBe("");
       expect(s.ouzbekRecordingP3).toBeNull();
+    });
+
+    it("backToMenu resets ouzbekThemeP1", () => {
+      useGameStore.setState({
+        phase: "recordingP1",
+        mode: "ouzbek",
+        ouzbekThemeP1: "voyage",
+      });
+      useGameStore.getState().backToMenu();
+      expect(useGameStore.getState().ouzbekThemeP1).toBe("");
     });
   });
 

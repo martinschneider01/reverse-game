@@ -505,6 +505,12 @@
     max-width: 10rem;
   }
 
+  .theme-input {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
   .chip {
     background-color: var(--color-surface);
     color: var(--color-text);
