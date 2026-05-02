@@ -81,6 +81,11 @@ export function AudioPlayer({
   const rafRef = useRef<number | null>(null);
   const playStartRef = useRef<number | null>(null);
   const stuckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks whether the user has triggered playback at least once during this
+  // mount. Used by the waveform click-to-seek to default to "reverse" on the
+  // very first click (per issue #38) while still respecting `lockDirection`
+  // and the user's last-played direction afterwards.
+  const hasPlayedRef = useRef(false);
 
   const currentPlayingId = usePlaybackStore((s) => s.currentPlayingId);
   const setPlaying = usePlaybackStore((s) => s.setPlaying);
@@ -127,9 +132,23 @@ export function AudioPlayer({
     };
   }, [clearPlaying, playerId]);
 
-  function startTracking(): void {
-    setPositionFrac(0);
-    playStartRef.current = performance.now();
+  function startTracking(offsetMs = 0): void {
+    // Cancel any in-flight loop / stuck-fallback from a prior session — a
+    // mid-playback waveform re-seek calls startTracking again without going
+    // through stopTracking first.
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    if (stuckTimerRef.current !== null) {
+      clearTimeout(stuckTimerRef.current);
+      stuckTimerRef.current = null;
+    }
+    const initialFrac = Math.min(offsetMs / Math.max(1, recording.durationMs), 1);
+    setPositionFrac(initialFrac);
+    // Backdate the start so the loop's wall-elapsed → audio-elapsed math
+    // produces `offsetMs` immediately and keeps growing from there.
+    playStartRef.current = performance.now() - offsetMs / Math.max(0.0001, rateRef.current);
     const sessionStart = playStartRef.current;
     const loop = (): void => {
       if (playStartRef.current === null) return;
@@ -197,8 +216,42 @@ export function AudioPlayer({
     player.play();
     setIsPlaying(true);
     setPlaying(playerId);
+    hasPlayedRef.current = true;
     onPlay?.();
     startTracking();
+  }
+
+  function handleWaveformClick(event: React.MouseEvent<HTMLDivElement>): void {
+    if (disabled) return;
+    const player = playerRef.current;
+    if (player === null) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const frac = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+
+    // Direction rule (issue #38):
+    //   1. lockDirection wins outright,
+    //   2. otherwise the last-played direction if the user has already played,
+    //   3. otherwise "reverse" by default at first click.
+    const target: Direction = lockDirection ?? (hasPlayedRef.current ? direction : "reverse");
+
+    // Visual frac is left→right in the original (forward-time) waveform.
+    // Reverse playback uses the pre-reversed buffer, so the equivalent offset
+    // inside that buffer is mirrored.
+    const offsetMs = (target === "forward" ? frac : 1 - frac) * recording.durationMs;
+
+    audioSessionPrimer();
+    if (direction !== target) {
+      player.setDirection(target);
+      setDirection(target);
+    }
+    player.play(offsetMs);
+    setIsPlaying(true);
+    setPlaying(playerId);
+    hasPlayedRef.current = true;
+    onPlay?.();
+    startTracking(offsetMs);
   }
 
   function handleRateChange(event: React.ChangeEvent<HTMLInputElement>): void {
@@ -239,7 +292,12 @@ export function AudioPlayer({
         </button>
       )}
 
-      <div className="audio-player-waveform" aria-hidden="true">
+      <div
+        className="audio-player-waveform"
+        data-testid="waveform"
+        role="presentation"
+        onClick={handleWaveformClick}
+      >
         {bars.map((height, i) => (
           <span
             key={i}

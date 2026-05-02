@@ -3777,3 +3777,89 @@ Notes pour le prochain agent
      pendant `recordingP1` perdra le thème — c'est cohérent avec le
      traitement du recorder lui-même (pas de resume d'un MediaRecorder
      en cours).
+
+================================================================================
+2026-05-02 20:17 — Issue #38 (waveform clic-to-seek dans <AudioPlayer />)
+================================================================================
+
+Done
+
+  src/audio/wrappers/player.ts
+    - Player.play() accepte désormais un `offsetMs` optionnel (défaut 0).
+    - `startSource(offsetMs)` convertit en secondes et passe l'offset à
+      `AudioBufferSourceNode.start(0, offsetSec)`. Sémantique restée
+      simple : "démarrer à offsetMs ms du début du buffer choisi", avec
+      le buffer reverse pré-calculé dans la direction reverse.
+    - Valeur négative clamped à 0.
+
+  src/audio/wrappers/player.test.ts (+5 tests)
+    - play() défaut → start(0, 0)
+    - play(250) → start(0, 0.25)
+    - reverse + play(400) → start(0, 0.4) sur recording.reverse
+    - play(-50) → start(0, 0) (clamp)
+    - play(offsetMs) pendant lecture → dispose old source, re-seek
+
+  src/components/AudioPlayer.tsx
+    - Nouveau handler `handleWaveformClick` sur `.audio-player-waveform`
+      (ex-`aria-hidden="true"`, devenu `role="presentation"` +
+      `data-testid="waveform"`).
+    - Conversion frac visuel → offset buffer : forward = frac×dur,
+      reverse = (1-frac)×dur (mirroring du buffer pré-inversé).
+    - Règle de direction (issue #38) :
+        1. lockDirection wins,
+        2. sinon last-played direction (`hasPlayedRef`),
+        3. sinon "reverse" par défaut au tout premier clic.
+    - `hasPlayedRef` (useRef bool) suit "le user a-t-il déjà joué",
+      true à chaque play tap (boutons OU waveform).
+    - `startTracking(offsetMs)` :
+        * cancel any in-flight raf + stuck-fallback (re-seek mid-play),
+        * positionFrac initial = offsetMs / durationMs,
+        * playStartRef backdaté : now − offsetMs/rate, pour que la boucle
+          raf produise la bonne frac immédiatement et progresse de là.
+    - audioSessionPrimer + onPlay + setPlaying également déclenchés sur
+      clic waveform (cohérent avec les boutons de direction).
+
+  src/components/AudioPlayer.test.tsx (+10 tests)
+    Bloc "waveform click-to-seek (issue #38)" — 8 tests :
+      - 1er clic : reverse par défaut, offset mirroring (frac=0.25 → 75ms),
+      - après play forward, click → forward + offset = frac×dur,
+      - lockDirection="forward" annule le reverse-default,
+      - lockDirection="reverse" + offset mirroring (closeTo pour
+        contourner 1−0.8=0.19999…),
+      - re-seek mid-play : nouveau play(offset), pas de pause intermédiaire,
+      - audioSessionPrimer + onPlay invoqués sur clic waveform,
+      - disabled=true → no-op,
+      - clamp [0,1] sur clic hors waveform (clientX > rect.right ou < left).
+    Bloc playhead animation — 2 tests :
+      - forward : positionFrac démarre à 0.3 et progresse vers 1,
+      - reverse : positionFrac démarre côté droit (0.7 visuel) et se
+        déplace vers la gauche (0.4 après 30ms).
+
+Verification (toutes vertes)
+
+  - bun run typecheck → clean
+  - bun run lint → 0 warnings, 0 errors (95 rules, 73 files)
+  - bun run format:check → clean (74 files)
+  - bun run test → 414/414 passing across 33 test files
+    (+15 tests vs baseline 399)
+
+Notes pour le prochain agent
+
+  - Toutes les issues GitHub ouvertes sont closes.
+  - Choix d'a11y : la waveform passe de `aria-hidden="true"` à
+    `role="presentation"` (un élément interactif ne peut pas être
+    aria-hidden). Pas de support clavier ajouté (pas de tabIndex / key
+    handler). Si on veut rendre le seek accessible au clavier, l'idéal
+    serait sans doute role="slider" avec aria-valuenow + flèches, mais
+    c'est hors scope #38.
+  - Le mode "click-to-seek pendant lecture" reuse `player.play(offset)`
+    qui dispose la source précédente — onended de l'ancienne source ne
+    fire pas (nullé par `disposeSource`), donc pas de risque de double
+    transition vers `isPlaying=false`.
+  - Petit hack flottant : 1−0.8 = 0.19999… → assertion sur l'offset
+    reverse utilise `expect.closeTo(20, 6)`. Si vous changez la formule
+    (ex: passer en samples), pensez à revérifier ces tests.
+  - `startTracking(offsetMs)` backdate `playStartRef` ce qui donne une
+    base correcte tant que `rate` ne change pas. Le bug pré-existant
+    (changement de rate mid-playback ne re-rebase pas la frac) reste,
+    pas dans le scope.

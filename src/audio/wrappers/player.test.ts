@@ -317,6 +317,69 @@ describe("createPlayer", () => {
     expect(gain.gain.value).toBe(2);
   });
 
+  it("play() with no argument starts the source at offset 0", () => {
+    const ctx = new FakeAudioContext();
+    const player = createPlayer(ctx as unknown as AudioContext);
+    player.load(makeRecording());
+
+    player.play();
+
+    const source = FakeBufferSource.instances.at(-1)!;
+    expect(source.start).toHaveBeenCalledWith(0, 0);
+  });
+
+  it("play(offsetMs) forwards the offset (in seconds) to AudioBufferSourceNode.start", () => {
+    const ctx = new FakeAudioContext();
+    const player = createPlayer(ctx as unknown as AudioContext);
+    player.load(makeRecording());
+
+    player.play(250);
+
+    const source = FakeBufferSource.instances.at(-1)!;
+    expect(source.start).toHaveBeenCalledWith(0, 0.25);
+  });
+
+  it("play(offsetMs) on a reverse player starts the reverse buffer at the same offset semantics", () => {
+    const ctx = new FakeAudioContext();
+    const player = createPlayer(ctx as unknown as AudioContext);
+    const rec = makeRecording();
+    player.load(rec);
+    player.setDirection("reverse");
+
+    player.play(400);
+
+    const source = FakeBufferSource.instances.at(-1)!;
+    expect(source.buffer).toBe(rec.reverse);
+    expect(source.start).toHaveBeenCalledWith(0, 0.4);
+  });
+
+  it("play(offsetMs) with a negative value is clamped to 0", () => {
+    const ctx = new FakeAudioContext();
+    const player = createPlayer(ctx as unknown as AudioContext);
+    player.load(makeRecording());
+
+    player.play(-50);
+
+    const source = FakeBufferSource.instances.at(-1)!;
+    expect(source.start).toHaveBeenCalledWith(0, 0);
+  });
+
+  it("calling play(offsetMs) while a source is active disposes the previous one and re-seeks", () => {
+    const ctx = new FakeAudioContext();
+    const player = createPlayer(ctx as unknown as AudioContext);
+    player.load(makeRecording());
+    player.play();
+    const first = FakeBufferSource.instances.at(-1)!;
+
+    player.play(750);
+
+    const second = FakeBufferSource.instances.at(-1)!;
+    expect(first).not.toBe(second);
+    expect(first.stop).toHaveBeenCalled();
+    expect(first.disconnect).toHaveBeenCalled();
+    expect(second.start).toHaveBeenCalledWith(0, 0.75);
+  });
+
   it("reuses the same GainNode across successive play() calls", () => {
     const ctx = new FakeAudioContext();
     const player = createPlayer(ctx as unknown as AudioContext);

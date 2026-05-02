@@ -2,7 +2,11 @@ import type { Direction, Recording } from "@/audio/recording";
 
 export type Player = {
   load: (recording: Recording) => void;
-  play: () => void;
+  // offsetMs (default 0) is the start position inside the buffer that's about
+  // to play — semantics match AudioBufferSourceNode.start(when, offset). For
+  // direction === "reverse" this is an offset into the pre-reversed buffer,
+  // so callers seeking from a left→right visual position must convert first.
+  play: (offsetMs?: number) => void;
   pause: () => void;
   setRate: (rate: number) => void;
   setDirection: (direction: Direction) => void;
@@ -44,7 +48,7 @@ export function createPlayer(audioContext: AudioContext, options: PlayerOptions 
     }
   }
 
-  function startSource(): void {
+  function startSource(offsetMs = 0): void {
     if (recording === null) {
       throw new Error("No recording loaded");
     }
@@ -70,7 +74,8 @@ export function createPlayer(audioContext: AudioContext, options: PlayerOptions 
       }
     };
     source = node;
-    node.start();
+    const offsetSec = Math.max(0, offsetMs) / 1000;
+    node.start(0, offsetSec);
   }
 
   return {
@@ -78,8 +83,8 @@ export function createPlayer(audioContext: AudioContext, options: PlayerOptions 
       recording = r;
     },
 
-    play() {
-      startSource();
+    play(offsetMs = 0) {
+      startSource(offsetMs);
     },
 
     pause() {

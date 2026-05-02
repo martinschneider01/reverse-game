@@ -559,6 +559,194 @@ describe("<AudioPlayer />", () => {
   });
 });
 
+describe("<AudioPlayer /> waveform click-to-seek (issue #38)", () => {
+  beforeEach(() => {
+    usePlaybackStore.setState({ ...INITIAL_PLAYBACK_STATE });
+  });
+
+  function clickWaveformAt(waveform: HTMLElement, frac: number): void {
+    // jsdom returns a zero-sized DOMRect by default; stub a usable one so the
+    // handler's frac math has something to work with.
+    Object.defineProperty(waveform, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        left: 0,
+        top: 0,
+        right: 200,
+        bottom: 40,
+        width: 200,
+        height: 40,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }),
+    });
+    fireEvent.click(waveform, { clientX: frac * 200, clientY: 20 });
+  }
+
+  it("first click on the waveform plays in reverse by default and seeks to the mirrored offset", () => {
+    const { player, play, setDirection } = makeFakePlayer();
+
+    render(
+      <AudioPlayer recording={fakeRecording} audioContext={fakeCtx} playerFactory={() => player} />,
+    );
+
+    // Visual frac=0.25 (left-quarter) → reverse buffer offset = (1 − 0.25) × 100ms = 75ms.
+    clickWaveformAt(screen.getByTestId("waveform"), 0.25);
+
+    expect(setDirection).toHaveBeenLastCalledWith("reverse");
+    expect(play).toHaveBeenCalledWith(75);
+    expect(screen.getByRole("button", { name: /^pause$/i })).toBeInTheDocument();
+  });
+
+  it("after a forward play, clicking the waveform stays in forward and seeks at frac × duration", async () => {
+    const user = userEvent.setup();
+    const { player, play } = makeFakePlayer();
+
+    render(
+      <AudioPlayer recording={fakeRecording} audioContext={fakeCtx} playerFactory={() => player} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /lecture à l'endroit/i }));
+    expect(play).toHaveBeenLastCalledWith();
+
+    // Visual frac=0.4 → forward offset = 0.4 × 100 = 40ms.
+    clickWaveformAt(screen.getByTestId("waveform"), 0.4);
+
+    expect(play).toHaveBeenLastCalledWith(40);
+  });
+
+  it("respects lockDirection='forward' on the very first click (no reverse default)", () => {
+    const { player, play, setDirection } = makeFakePlayer();
+
+    render(
+      <AudioPlayer
+        recording={fakeRecording}
+        audioContext={fakeCtx}
+        playerFactory={() => player}
+        lockDirection="forward"
+      />,
+    );
+
+    setDirection.mockClear();
+    clickWaveformAt(screen.getByTestId("waveform"), 0.6);
+
+    expect(setDirection).not.toHaveBeenCalled();
+    expect(play).toHaveBeenCalledWith(60);
+  });
+
+  it("respects lockDirection='reverse' (forward already disabled), seeks the mirrored offset", () => {
+    const { player, play } = makeFakePlayer();
+
+    render(
+      <AudioPlayer
+        recording={fakeRecording}
+        audioContext={fakeCtx}
+        playerFactory={() => player}
+        lockDirection="reverse"
+      />,
+    );
+
+    clickWaveformAt(screen.getByTestId("waveform"), 0.8);
+
+    // Visual frac=0.8 in reverse → buffer offset = (1 − 0.8) × 100 = ~20ms
+    // (tolerated for floating-point drift on the 1 − frac mirror).
+    expect(play).toHaveBeenCalledWith(expect.closeTo(20, 6));
+  });
+
+  it("clicking the waveform during playback re-seeks (new play call) without an intermediate pause", async () => {
+    const user = userEvent.setup();
+    const { player, play, pause } = makeFakePlayer();
+
+    render(
+      <AudioPlayer recording={fakeRecording} audioContext={fakeCtx} playerFactory={() => player} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /lecture à l'endroit/i }));
+    expect(play).toHaveBeenCalledTimes(1);
+    pause.mockClear();
+
+    clickWaveformAt(screen.getByTestId("waveform"), 0.5);
+
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(play).toHaveBeenLastCalledWith(50);
+    expect(pause).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /^pause$/i })).toBeInTheDocument();
+  });
+
+  it("re-primes the audio session and fires onPlay on a waveform click", () => {
+    const { player } = makeFakePlayer();
+    const audioSessionPrimer = vi.fn();
+    const onPlay = vi.fn();
+
+    render(
+      <AudioPlayer
+        recording={fakeRecording}
+        audioContext={fakeCtx}
+        playerFactory={() => player}
+        audioSessionPrimer={audioSessionPrimer}
+        onPlay={onPlay}
+      />,
+    );
+
+    clickWaveformAt(screen.getByTestId("waveform"), 0.3);
+
+    expect(audioSessionPrimer).toHaveBeenCalledTimes(1);
+    expect(onPlay).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing when the player is disabled", () => {
+    const { player, play } = makeFakePlayer();
+
+    render(
+      <AudioPlayer
+        recording={fakeRecording}
+        audioContext={fakeCtx}
+        playerFactory={() => player}
+        disabled={true}
+      />,
+    );
+
+    clickWaveformAt(screen.getByTestId("waveform"), 0.5);
+
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it("clamps clicks outside the waveform to [0, 1]", () => {
+    const { player, play } = makeFakePlayer();
+
+    render(
+      <AudioPlayer recording={fakeRecording} audioContext={fakeCtx} playerFactory={() => player} />,
+    );
+
+    const waveform = screen.getByTestId("waveform");
+    Object.defineProperty(waveform, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        left: 0,
+        top: 0,
+        right: 200,
+        bottom: 40,
+        width: 200,
+        height: 40,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }),
+    });
+
+    // Click well past the right edge — frac should clamp to 1; in reverse
+    // (default first-click direction) that's offset = (1 − 1) × 100 = 0.
+    fireEvent.click(waveform, { clientX: 9999, clientY: 20 });
+    expect(play).toHaveBeenLastCalledWith(0);
+
+    // Click well before the left edge — frac clamps to 0; reverse offset =
+    // (1 − 0) × 100 = 100ms.
+    fireEvent.click(waveform, { clientX: -50, clientY: 20 });
+    expect(play).toHaveBeenLastCalledWith(100);
+  });
+});
+
 describe("<AudioPlayer /> playhead animation", () => {
   let now = 0;
   const rafCallbacks: Array<{ id: number; cb: FrameRequestCallback }> = [];
@@ -674,6 +862,92 @@ describe("<AudioPlayer /> playhead animation", () => {
     });
     expect(pause).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: /^pause$/i })).toBeInTheDocument();
+  });
+
+  it("waveform click positions the playhead at the clicked frac (forward) and advances from there", () => {
+    const { player } = makeFakePlayer();
+
+    render(
+      <AudioPlayer recording={fakeRecording} audioContext={fakeCtx} playerFactory={() => player} />,
+    );
+
+    // Pre-arm a forward play so the next waveform click stays on forward.
+    fireEvent.click(screen.getByRole("button", { name: /lecture à l'endroit/i }));
+    flushRaf(0);
+
+    const waveform = screen.getByTestId("waveform");
+    Object.defineProperty(waveform, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        left: 0,
+        top: 0,
+        right: 200,
+        bottom: 40,
+        width: 200,
+        height: 40,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }),
+    });
+    now = 100;
+    fireEvent.click(waveform, { clientX: 60, clientY: 20 }); // frac 0.3
+    flushRaf(100);
+
+    const startPos = parseFloat(screen.getByTestId("playhead").dataset.position ?? "0");
+    expect(startPos).toBeCloseTo(0.3, 2);
+
+    // 20ms later the wall clock has progressed; the playhead should advance
+    // from 0.3 toward 1, not restart from 0.
+    now = 120;
+    flushRaf(120);
+    const nextPos = parseFloat(screen.getByTestId("playhead").dataset.position ?? "0");
+    expect(nextPos).toBeGreaterThan(0.3);
+  });
+
+  it("waveform click in reverse renders the playhead at the clicked frac and moves it leftward", () => {
+    const { player } = makeFakePlayer();
+
+    render(
+      <AudioPlayer
+        recording={fakeRecording}
+        audioContext={fakeCtx}
+        playerFactory={() => player}
+        lockDirection="reverse"
+      />,
+    );
+
+    const waveform = screen.getByTestId("waveform");
+    Object.defineProperty(waveform, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        left: 0,
+        top: 0,
+        right: 200,
+        bottom: 40,
+        width: 200,
+        height: 40,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }),
+    });
+    now = 100;
+    fireEvent.click(waveform, { clientX: 140, clientY: 20 }); // frac 0.7
+    flushRaf(100);
+
+    // Visual frac=0.7 in reverse → buffer offset = (1 − 0.7) × 100 = 30ms.
+    // positionFrac = 30/100 = 0.3, playheadFrac = 1 − 0.3 = 0.7.
+    const startPos = parseFloat(screen.getByTestId("playhead").dataset.position ?? "0");
+    expect(startPos).toBeCloseTo(0.7, 2);
+
+    now = 130;
+    flushRaf(130);
+    // 30ms wall-clock later the buffer has advanced 30ms (rate=1) so
+    // positionFrac = 0.6 and playheadFrac = 0.4 — leftward of the click.
+    const nextPos = parseFloat(screen.getByTestId("playhead").dataset.position ?? "1");
+    expect(nextPos).toBeLessThan(startPos);
+    expect(nextPos).toBeCloseTo(0.4, 2);
   });
 
   it("renders the playhead from right→left when playing in reverse", async () => {
