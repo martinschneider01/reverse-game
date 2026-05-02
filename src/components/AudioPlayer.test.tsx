@@ -616,6 +616,66 @@ describe("<AudioPlayer /> playhead animation", () => {
     expect(pos).toBeLessThanOrEqual(1);
   });
 
+  it("force-ends playback if onended doesn't fire after the wall-clock reaches the end (iOS stuck-source fallback)", async () => {
+    const user = userEvent.setup();
+    const { player, pause } = makeFakePlayer();
+
+    render(
+      <AudioPlayer recording={fakeRecording} audioContext={fakeCtx} playerFactory={() => player} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /lecture à l'endroit/i }));
+    expect(screen.getByRole("button", { name: /^pause$/i })).toBeInTheDocument();
+
+    // Advance the wall-clock past the recording's duration (100ms) so the
+    // tracker reaches frac >= 1. onended is intentionally NOT fired — that's
+    // the symptom of the iOS Brave bug where the BufferSource never
+    // progresses.
+    now = 200;
+    flushRaf(200);
+    expect(screen.getByRole("button", { name: /^pause$/i })).toBeInTheDocument();
+    expect(pause).not.toHaveBeenCalled();
+
+    // The fallback timer is a real 500ms setTimeout. Wait it out.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 600));
+    });
+    expect(pause).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: /lecture à l'endroit/i })).toBeInTheDocument();
+    expect(usePlaybackStore.getState().currentPlayingId).toBeNull();
+  });
+
+  it("does not force-end if the user restarts playback during the grace period", async () => {
+    const user = userEvent.setup();
+    const { player, pause } = makeFakePlayer();
+
+    render(
+      <AudioPlayer recording={fakeRecording} audioContext={fakeCtx} playerFactory={() => player} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /lecture à l'endroit/i }));
+    now = 200;
+    flushRaf(200);
+
+    // User pauses + restarts within the grace window. The pending fallback
+    // (captured against the previous session start) must not interfere with
+    // the new playback session.
+    await user.click(screen.getByRole("button", { name: /^pause$/i }));
+    expect(pause).toHaveBeenCalledTimes(1);
+    pause.mockClear();
+
+    now = 300;
+    await user.click(screen.getByRole("button", { name: /lecture à l'endroit/i }));
+    flushRaf(300);
+
+    // Wait past the 500ms threshold of the original fallback.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 600));
+    });
+    expect(pause).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /^pause$/i })).toBeInTheDocument();
+  });
+
   it("renders the playhead from right→left when playing in reverse", async () => {
     const user = userEvent.setup();
     const { player } = makeFakePlayer();

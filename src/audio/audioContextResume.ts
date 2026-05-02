@@ -95,12 +95,22 @@ export function installAudioContextResume(
     const ctx = getContext();
     if (ctx === null) return;
     watchContextState(ctx);
-    if (!isContextRecoverable(ctx)) return;
-    // Best-effort immediate resume — succeeds on browsers that allow it
-    // without a user gesture (Chrome desktop, Firefox). On iOS this typically
-    // does nothing, hence the gesture-armed fallback below.
-    void ctx.resume().catch(() => {});
-    arm();
+    if (isContextRecoverable(ctx)) {
+      // Best-effort immediate resume — succeeds on browsers that allow it
+      // without a user gesture (Chrome desktop, Firefox). On iOS this typically
+      // does nothing, hence the gesture-armed fallback below.
+      void ctx.resume().catch(() => {});
+      arm();
+      return;
+    }
+    if (isIos) {
+      // Context reports "running" but on iOS (and notably Brave iOS) the
+      // AVAudioSession can still have drifted back to ringer/silent — symptom
+      // is the playhead advances yet no sound comes out. Arm the silent-WAV
+      // replay on the next user gesture; resume() is a no-op on a running
+      // context, so the handler will skip it and only re-prime the session.
+      arm();
+    }
   }
 
   function handleVisibilityChange(): void {

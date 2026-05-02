@@ -80,6 +80,7 @@ export function AudioPlayer({
   const rateRef = useRef(1);
   const rafRef = useRef<number | null>(null);
   const playStartRef = useRef<number | null>(null);
+  const stuckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentPlayingId = usePlaybackStore((s) => s.currentPlayingId);
   const setPlaying = usePlaybackStore((s) => s.setPlaying);
@@ -129,6 +130,7 @@ export function AudioPlayer({
   function startTracking(): void {
     setPositionFrac(0);
     playStartRef.current = performance.now();
+    const sessionStart = playStartRef.current;
     const loop = (): void => {
       if (playStartRef.current === null) return;
       const wallElapsedMs = performance.now() - playStartRef.current;
@@ -137,6 +139,21 @@ export function AudioPlayer({
       setPositionFrac(frac);
       if (frac < 1) {
         rafRef.current = requestAnimationFrame(loop);
+      } else {
+        // Wall clock says playback is done. If onended doesn't fire within
+        // a short grace, force-end ourselves — symptom of an iOS edge case
+        // (Brave iOS especially) where the AudioContext reports "running"
+        // but the BufferSource never progresses, so onended never fires and
+        // the pause button stays clickable forever.
+        if (stuckTimerRef.current !== null) clearTimeout(stuckTimerRef.current);
+        stuckTimerRef.current = setTimeout(() => {
+          stuckTimerRef.current = null;
+          if (playStartRef.current !== sessionStart) return;
+          playerRef.current?.pause();
+          setIsPlaying(false);
+          clearPlaying(playerId);
+          stopTracking();
+        }, 500);
       }
     };
     rafRef.current = requestAnimationFrame(loop);
@@ -147,6 +164,10 @@ export function AudioPlayer({
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
+    }
+    if (stuckTimerRef.current !== null) {
+      clearTimeout(stuckTimerRef.current);
+      stuckTimerRef.current = null;
     }
     setPositionFrac(0);
   }

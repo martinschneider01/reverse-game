@@ -74,6 +74,31 @@ describe("installAudioContextResume", () => {
     cleanup();
   });
 
+  it("on iOS with a running context, still arms the silent-WAV replay on next gesture (Brave iOS lying state)", () => {
+    // Brave iOS exhibits the AVAudioSession drifting back to ringer/silent
+    // without the AudioContext changing state — playhead advances but no
+    // sound. Re-priming on the next user gesture is the recovery path.
+    const ctx = makeFakeContext("running");
+    const play = vi.fn(() => Promise.resolve());
+    const audioFactory = vi.fn(() => ({ play, preload: "auto" }) as unknown as HTMLAudioElement);
+
+    const cleanup = installAudioContextResume(() => ctx as unknown as AudioContext, {
+      isIos: true,
+      audioFactory,
+    });
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(ctx.resume).not.toHaveBeenCalled();
+
+    document.dispatchEvent(new Event("pointerdown"));
+    expect(audioFactory).toHaveBeenCalledTimes(1);
+    expect(play).toHaveBeenCalledTimes(1);
+    // resume() must not be called on a running context (no-op + avoids
+    // perturbing a healthy session).
+    expect(ctx.resume).not.toHaveBeenCalled();
+    cleanup();
+  });
+
   it("does nothing when visibilitychange fires while the page is hidden", () => {
     const ctx = makeFakeContext("suspended");
     setVisibility("hidden");
