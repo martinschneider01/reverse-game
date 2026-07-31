@@ -5,6 +5,7 @@ import { installAudioContextResume } from "@/audio/audioContextResume";
 import { loadPersistedState, type PersistedRecording } from "@/store/persistence";
 import { startGameStorePersistence } from "@/store/persistGameStore";
 import { reverseBuffer } from "@/audio/reverseBuffer";
+import { decodeRecording } from "@/audio/decodeRecording";
 import { computePeakGain } from "@/audio/peakGain";
 import type { Recording } from "@/audio/recording";
 import { MenuPhase } from "@/phases/MenuPhase";
@@ -39,10 +40,7 @@ function timerExpiryTarget(phase: PersistedPhase): PersistedPhase | null {
 }
 
 async function rehydrateRecording(p: PersistedRecording, ctx: AudioContext): Promise<Recording> {
-  // decodeAudioData detaches its input ArrayBuffer; clone via .arrayBuffer()
-  // each call so a future re-decode (unlikely but cheap insurance) still works.
-  const data = await p.blob.arrayBuffer();
-  const forward = await ctx.decodeAudioData(data);
+  const forward = await decodeRecording(p.blob, ctx);
   const reversed = reverseBuffer(forward, ctx);
   const gain = computePeakGain(forward);
   return { forward, reverse: reversed, durationMs: p.durationMs, gain, blob: p.blob };
